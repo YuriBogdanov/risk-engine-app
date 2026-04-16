@@ -1,0 +1,12 @@
+# Зависимости
+node_modules/
+__pycache__/
+venv/
+env/
+
+# Файлы с ключами (ОБЯЗАТЕЛЬНО!)
+.env
+config.py
+
+# Системные файлы
+.DS_Store
