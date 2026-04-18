@@ -6,7 +6,8 @@ import {
   CheckCircle2, Loader2, ArrowRightLeft, Droplet, TrendingUp, 
   UserMinus, PieChart, Check, Globe
 } from 'lucide-react';
-import { useAccount } from 'wagmi';
+import { useAccount, useSendTransaction } from 'wagmi';
+import { parseUnits } from 'viem';
 
 const MOCK_NETWORKS = [
   { id: 'all', name: 'Все сети', icon: '🌐' },
@@ -25,7 +26,7 @@ const formatNumber = (num, decimals = 2) => {
   return Number(num).toLocaleString('en-US', { maximumFractionDigits: decimals, minimumFractionDigits: 0 });
 };
 
-// Кастомные стили для скроллбара (Web3 / Mac OS style)
+// Кастомные стили для скроллбара
 const scrollbarStyles = `
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
@@ -57,11 +58,17 @@ function App() {
   const [payAmount, setPayAmount] = useState('');
 
   const { address, isConnected } = useAccount();
+  const { sendTransactionAsync } = useSendTransaction(); // <-- ХУК ДЛЯ ВЫЗОВА METAMASK
+  
   const [backendData, setBackendData] = useState(null);
   const [isLoadingAssets, setIsLoadingAssets] = useState(false);
 
   const [riskData, setRiskData] = useState(null);
   const [isRiskLoading, setIsRiskLoading] = useState(false);
+  
+  // Состояния для процесса обмена
+  const [isSwapping, setIsSwapping] = useState(false);
+  const [swapStatus, setSwapStatus] = useState('');
 
   useEffect(() => {
     if (backendData && backendData.assets && backendData.assets.length > 0 && !payToken && !receiveToken) {
@@ -241,13 +248,83 @@ function App() {
     setRiskData(null); 
   };
 
-  // === ИСПРАВЛЕНИЕ: Мгновенная фильтрация токенов по выбранной сети ===
-  const displayAssets = useMemo(() => {
+  // === ЛОГИКА БОЕВОГО ОБМЕНА ===
+  const handleSwap = async () => {
+    if (!payToken || !receiveToken || !payAmount || !address) return;
+    
+    setIsSwapping(true);
+    setSwapStatus('Проверка разрешения...');
+    
+    try {
+      const decimals = payToken.decimals || 18; 
+      const amountWei = parseUnits(payAmount, decimals).toString();
+
+      const reqBody = {
+        // Мы принудительно шлем "56", так как 1inch работает только с реальными ID.
+        // Если в будущем добавишь Ethereum, тут можно будет сделать условие.
+        chainId: "56", 
+        fromToken: payToken.isNative ? "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" : payToken.address,
+        toToken: receiveToken.isNative ? "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" : receiveToken.address,
+        amountWei: amountWei,
+        userWallet: address
+      };
+
+      // 1. Проверяем Approve
+      const approveRes = await fetch("http://127.0.0.1:8000/api/build-approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(reqBody)
+      });
+      const approveData = await approveRes.json();
+
+      if (approveData.needsApprove && approveData.tx) {
+        setSwapStatus('Ожидание Approve в MetaMask...');
+        await sendTransactionAsync({
+          to: approveData.tx.to,
+          data: approveData.tx.data,
+          value: approveData.tx.value ? BigInt(approveData.tx.value) : 0n
+        });
+        
+        setSwapStatus('Approve отправлен! Ждем блокчейн...');
+        await new Promise(r => setTimeout(r, 4000)); // Пауза, чтобы сеть успела обновить данные
+      }
+
+      // 2. Запрашиваем сам Swap
+      setSwapStatus('Формирование маршрута...');
+      const swapRes = await fetch("http://127.0.0.1:8000/api/build-swap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(reqBody)
+      });
+      const swapData = await swapRes.json();
+
+      if (swapData.error) throw new Error(swapData.error);
+
+      // 3. Вызываем MetaMask для отправки обмена
+      setSwapStatus('Подтвердите Swap в MetaMask...');
+      const swapHash = await sendTransactionAsync({
+        to: swapData.tx.to,
+        data: swapData.tx.data,
+        value: swapData.tx.value ? BigInt(swapData.tx.value) : 0n,
+      });
+
+      alert(`✅ Обмен успешно отправлен!\nХэш транзакции: ${swapHash}`);
+      setPayAmount('');
+      
+    } catch (error) {
+      console.error("Swap Error:", error);
+      alert(`❌ Ошибка обмена: ${error.message || 'Транзакция отклонена или не хватило газа.'}`);
+    } finally {
+      setIsSwapping(false);
+      setSwapStatus('');
+    }
+  };
+
+const displayAssets = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
     let assets = (backendData && backendData.assets) ? backendData.assets : [];
     
-    // Если выбрана конкретная сеть, отсекаем всё лишнее прямо на фронтенде,
-    // не дожидаясь ответа от бэкенда!
+    // Мгновенная фильтрация по выбранной сети
     if (selectedNetwork.id !== 'all') {
       assets = assets.filter(token => String(token.chain_id) === String(selectedNetwork.id));
     }
@@ -262,6 +339,26 @@ function App() {
     const globalFiltered = globalSearchAssets.filter(t => !localAddresses.has(t.address.toLowerCase()));
 
     let combined = [...localFiltered, ...globalFiltered];
+
+    // === МАГИЯ ДЛЯ ПЕСОЧНИЦЫ: ИСКУССТВЕННО ДОБАВЛЯЕМ НАШ BNB ===
+    if (isConnected && (selectedNetwork.id === 'all' || selectedNetwork.id === '56')) {
+      const hasBnb = combined.find(t => t.symbol === 'BNB' && t.isNative);
+      // Если BNB нет в списке с бэкенда, и мы не ищем что-то другое
+      if (!hasBnb && (!query || 'bnb'.includes(query))) {
+        combined.unshift({ // unshift ставит BNB на самое первое место
+          symbol: "BNB",
+          name: "BNB (Local Sandbox)",
+          address: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", // Стандарт для 1inch
+          balance: "10000.00",
+          usd_value: 0,
+          isNative: true,
+          isSpam: false,
+          chain_id: '56',
+          decimals: 18 // Важно для функции parseUnits
+        });
+      }
+    }
+    // ==========================================================
 
     const isEVMAddress = /^0x[a-fA-F0-9]{40}$/i.test(query);
     if (isEVMAddress && combined.length === 0 && !isSearching) {
@@ -279,7 +376,8 @@ function App() {
     }
 
     return combined;
-  }, [backendData, searchQuery, globalSearchAssets, selectedNetwork, isSearching]);
+  }, [backendData, searchQuery, globalSearchAssets, selectedNetwork, isSearching, isConnected]); 
+  // Не забудь добавить isConnected в массив зависимостей в конце!
 
   const security = riskData ? riskData.security_analysis : null;
   const verdict = security ? security.verdict : null;
@@ -377,20 +475,26 @@ function App() {
               </ConnectKitButton.Custom>
             </div>
           ) : (
+            // === ОБНОВЛЕННАЯ КНОПКА С ИНДИКАЦИЕЙ ЗАГРУЗКИ ===
             <button 
-              disabled={!payToken || !receiveToken || !payAmount || isRiskLoading}
+              onClick={handleSwap}
+              disabled={!payToken || !receiveToken || !payAmount || isRiskLoading || isSwapping}
               className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed text-white font-bold text-lg py-4.5 rounded-2xl mt-5 shadow-xl shadow-blue-600/20 transition-all active:scale-[0.98] py-4"
             >
-              {!payAmount ? "Введите сумму" : !receiveToken ? "Выберите токен" : "Подтвердить обмен"}
+              {isSwapping ? (
+                 <span className="flex items-center justify-center gap-2">
+                    <Loader2 size={20} className="animate-spin" /> {swapStatus}
+                 </span>
+              ) : !payAmount ? "Введите сумму" : !receiveToken ? "Выберите токен" : "Подтвердить обмен"}
             </button>
           )}
         </div>
 
         {/* === ПРАВАЯ ЧАСТЬ: ДЕТАЛЬНАЯ ПАНЕЛЬ АНАЛИЗА РИСКОВ === */}
         {receiveToken && (
-          <div className="w-full max-w-[480px] shrink-0 bg-[#0f172a] rounded-[32px] border border-[#1e293b] shadow-2xl animate-in slide-in-from-right-8 fade-in duration-500 mx-auto lg:mx-0 max-h-[85vh] flex flex-col overflow-hidden">
+          <div className="w-full max-w-[480px] shrink-0 bg-[#0f172a] rounded-[32px] border border-[#1e293b] flex flex-col shadow-2xl animate-in slide-in-from-right-8 fade-in duration-500 mx-auto lg:mx-0 max-h-[85vh] overflow-hidden">
             
-            <div className="flex items-center gap-3 p-6 pb-4 bg-[#0f172a] border-b border-[#1e293b] shrink-0 z-10">
+            <div className="flex items-center gap-3 p-6 pb-4 bg-[#0f172a] border-b border-[#1e293b] sticky top-0 z-10 shrink-0">
               <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center">
                 <ShieldCheck className="text-blue-500" size={24} />
               </div>

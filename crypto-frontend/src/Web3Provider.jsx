@@ -1,18 +1,18 @@
 import { WagmiProvider, createConfig, http } from "wagmi";
-import { mainnet, bsc, base } from "wagmi/chains";
+import { mainnet, bsc, base } from "wagmi/chains"; 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConnectKitProvider, getDefaultConfig } from "connectkit";
 
 const config = createConfig(
   getDefaultConfig({
-    // Подключаем нужные нам сети
-    chains: [mainnet, bsc, base],
+    chains: [bsc, mainnet, base], // Ставим bsc на первое место
     transports: {
         [mainnet.id]: http('https://eth.llamarpc.com'), 
-        [bsc.id]: http('https://bsc-dataseed.binance.org'),
+        // ВОТ ОНА МАГИЯ: Мы перенаправляем BSC в твою песочницу!
+        [bsc.id]: http('http://127.0.0.1:8545'),
         [base.id]: http('https://mainnet.base.org'),
     },
-    walletConnectProjectId: "test-project-id", // Для тестов можно оставить так
+    walletConnectProjectId: "test-project-id",
     appName: "RiskEngine",
   }),
 );
