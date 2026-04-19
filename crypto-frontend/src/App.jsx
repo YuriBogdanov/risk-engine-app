@@ -57,7 +57,7 @@ function App() {
   const [receiveToken, setReceiveToken] = useState(null);
   const [payAmount, setPayAmount] = useState('');
 
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, isConnecting, isReconnecting } = useAccount();
   const { sendTransactionAsync } = useSendTransaction(); // <-- ХУК ДЛЯ ВЫЗОВА METAMASK
   
   const [backendData, setBackendData] = useState(null);
@@ -90,6 +90,12 @@ function App() {
       setIsLoadingAssets(false);
     }
   };
+
+  useEffect(() => {
+    if (isConnected && address) {
+      fetchAssets(selectedNetwork.id);
+    }
+  }, [isConnected, address, selectedNetwork.id]);
 
   useEffect(() => {
     const query = searchQuery.trim();
@@ -468,14 +474,17 @@ const displayAssets = useMemo(() => {
             </div>
           </div>
 
-          {!isConnected ? (
+          {(!isConnected && !isConnecting && !isReconnecting) ? (
             <div className="mt-5 flex justify-center [&>button]:w-full [&>button]:py-4 [&>button]:rounded-2xl [&>button]:text-lg [&>button]:font-bold [&>button]:shadow-xl">
                <ConnectKitButton.Custom>
                 {({ show }) => <button onClick={show} className="bg-blue-600 hover:bg-blue-500 transition-all active:scale-[0.98]">Подключить кошелек</button>}
               </ConnectKitButton.Custom>
             </div>
+          ) : (isConnecting || isReconnecting) ? (
+            <button disabled className="w-full bg-slate-800 text-slate-500 font-bold text-lg py-4 rounded-2xl mt-5 shadow-none cursor-not-allowed flex items-center justify-center gap-2">
+              <Loader2 className="animate-spin" size={20} /> Загрузка кошелька...
+            </button>
           ) : (
-            // === ОБНОВЛЕННАЯ КНОПКА С ИНДИКАЦИЕЙ ЗАГРУЗКИ ===
             <button 
               onClick={handleSwap}
               disabled={!payToken || !receiveToken || !payAmount || isRiskLoading || isSwapping}
@@ -736,17 +745,23 @@ const displayAssets = useMemo(() => {
                 <Settings size={14} /> {searchQuery ? "Результаты поиска" : "Ваши активы"}
               </div>
               
-              {!isConnected ? (
+              {(!isConnected && !isConnecting && !isReconnecting) ? (
                 <div className="flex flex-col items-center justify-center h-40 text-slate-500 text-center px-8">
                   <Wallet size={48} className="mb-4 opacity-50" />
                   <p>Подключите кошелек, чтобы увидеть свои активы в сети</p>
                 </div>
               ) : (
                 <>
-                  {isSearching || isLoadingAssets ? (
+                  {isConnecting || isReconnecting || isSearching || isLoadingAssets ? (
                     <div className="flex flex-col items-center justify-center p-10 text-blue-400">
                       <Loader2 className="animate-spin mb-2" size={24} />
-                      <span className="text-sm font-medium">{isSearching ? "Глобальный поиск..." : "Загрузка портфеля..."}</span>
+                      <span className="text-sm font-medium">
+                        {(isConnecting || isReconnecting) 
+                          ? "Восстановление сессии кошелька..." 
+                          : isSearching 
+                            ? "Глобальный поиск..." 
+                            : "Загрузка портфеля..."}
+                      </span>
                     </div>
                   ) : displayAssets.length > 0 ? (
                     displayAssets.map((token, i) => (
