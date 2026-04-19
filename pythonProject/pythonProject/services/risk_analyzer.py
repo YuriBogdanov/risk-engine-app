@@ -223,8 +223,8 @@ def calculate_total_risk_score(goplus_data, whales_report, dev_report, market_re
     sell_tax = parse_goplus_float(goplus_data.get('sell_tax'), 100)
 
     if buy_tax is None or sell_tax is None:
-        score += 80
-        risk_factors.append("Риск скрытой комиссии: API не смог прочитать налоги контракта (Значение: Неизвестно). Признак хитрого скама.")
+        score += 30
+        risk_factors.append("Риск скрытой комиссии: Не смогли прочитать налоги контракта. Действуйте с осторожностью.")
     else:
         max_tax = max(buy_tax, sell_tax)
         if max_tax >= 50.0:

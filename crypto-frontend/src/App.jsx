@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { ConnectKitButton } from "connectkit";
 import { 
-  ChevronDown, Search, X, ArrowDown, Settings, Wallet, 
+  ChevronDown, ChevronUp, ChevronRight, Search, X, ArrowDown, Settings, Wallet, 
   AlertTriangle, ShieldCheck, ShieldAlert, Activity, Info, 
-  CheckCircle2, Loader2, ArrowRightLeft, Droplet, TrendingUp, 
-  UserMinus, PieChart, Check, Globe
+  CheckCircle2, CheckCircle, XCircle, Loader2, ArrowRightLeft, Droplet, TrendingUp, 
+  UserMinus, PieChart, Check, Globe, Clock, ExternalLink
 } from 'lucide-react';
 import { useAccount, useSendTransaction } from 'wagmi';
 import { parseUnits } from 'viem';
@@ -26,7 +26,6 @@ const formatNumber = (num, decimals = 2) => {
   return Number(num).toLocaleString('en-US', { maximumFractionDigits: decimals, minimumFractionDigits: 0 });
 };
 
-// Кастомные стили для скроллбара
 const scrollbarStyles = `
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
@@ -58,17 +57,107 @@ function App() {
   const [payAmount, setPayAmount] = useState('');
 
   const { address, isConnected, isConnecting, isReconnecting } = useAccount();
-  const { sendTransactionAsync } = useSendTransaction(); // <-- ХУК ДЛЯ ВЫЗОВА METAMASK
+  const { sendTransactionAsync } = useSendTransaction(); 
   
   const [backendData, setBackendData] = useState(null);
   const [isLoadingAssets, setIsLoadingAssets] = useState(false);
 
   const [riskData, setRiskData] = useState(null);
   const [isRiskLoading, setIsRiskLoading] = useState(false);
+
+  const [debouncedPayAmount, setDebouncedPayAmount] = useState(payAmount);
+  const [quoteData, setQuoteData] = useState(null);
+  const [isQuoteLoading, setIsQuoteLoading] = useState(false);
   
-  // Состояния для процесса обмена
   const [isSwapping, setIsSwapping] = useState(false);
   const [swapStatus, setSwapStatus] = useState('');
+
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+
+  const [notifications, setNotifications] = useState([]);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [selectedHistoryTx, setSelectedHistoryTx] = useState(null);
+  
+  const [swapHistory, setSwapHistory] = useState(() => {
+    try {
+      const saved = localStorage.getItem('swapHistory');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const addNotification = (message, type = 'success', hash = null) => {
+    const id = Date.now();
+    setNotifications(prev => [...prev, { id, message, type, hash }]);
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, 5000);
+  };
+
+  // === ИСПРАВЛЕНО: Группировка истории СТРОГО по текущему кошельку ===
+  const groupedHistory = useMemo(() => {
+    if (!address) return {}; // Если нет кошелька, отдаем пустой объект
+    
+    // Фильтруем транзакции только для текущего пользователя
+    const userTxs = swapHistory.filter(tx => tx.userWallet && tx.userWallet.toLowerCase() === address.toLowerCase());
+    
+    return userTxs.reduce((acc, tx) => {
+        const date = new Date(tx.timestamp).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+        if (!acc[date]) acc[date] = [];
+        acc[date].push(tx);
+        return acc;
+    }, {});
+  }, [swapHistory, address]);
+  
+  const hasHistory = Object.keys(groupedHistory).length > 0;
+  // ====================================================================
+
+  const bnbToken = useMemo(() => {
+    return backendData?.assets?.find(t => (t.symbol === 'BNB' || t.symbol === 'WBNB') && Number(t.usd_value) > 0) || null;
+  }, [backendData]);
+  
+  const bnbPrice = bnbToken ? (Number(bnbToken.usd_value) / Number(bnbToken.balance)) : 600;
+
+  const getTokenPrice = (token) => {
+    if (!token) return 0;
+    if (token.isNative || token.symbol === 'BNB' || token.address.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee') {
+      return bnbPrice;
+    }
+    let price = 0;
+    if (token.isCustom) {
+      price = Number(token.usd_value || 0); 
+    } else {
+      const bal = Number(token.balance);
+      if (bal > 0) price = Number(token.usd_value) / bal; 
+    }
+    return (isFinite(price) && !isNaN(price)) ? price : 0;
+  };
+
+  const payUsd = payAmount ? (Number(payAmount) * getTokenPrice(payToken)) : 0;
+  const payUsdDisplay = payUsd > 0 ? `$${payUsd.toFixed(2)}` : '$-';
+
+  const receiveAmount = (quoteData && !quoteData.error && !isQuoteLoading) ? Number(quoteData.expected_output_human) : 0;
+  const receiveUsd = receiveAmount ? (receiveAmount * getTokenPrice(receiveToken)) : 0;
+  const receiveUsdDisplay = receiveUsd > 0 ? `$${receiveUsd.toFixed(2)}` : '$-';
+
+  const poolLiquidity = riskData?.security_analysis?.verdict?.total_liquidity_usd || 0;
+  const isLiquidityError = poolLiquidity > 0 && payUsd > poolLiquidity;
+  
+  const priceImpact = (payUsd > 0 && receiveUsd > 0) ? ((payUsd - receiveUsd) / payUsd * 100) : 0;
+  const isWarningPriceImpact = priceImpact > 10; 
+
+  const getButtonText = () => {
+    if (!payAmount || Number(payAmount) <= 0) return "Введите сумму";
+    if (!receiveToken) return "Выберите токен";
+    if (isLiquidityError) return "Превышена ликвидность пула";
+    if (!quoteData || quoteData.error) return "Маршрут не найден";
+    if (isWarningPriceImpact) return `Опасный обмен (${priceImpact.toFixed(1)}%)`;
+    return "Обмен";
+  };
+
+  const isSwapDisabled = !payToken || !receiveToken || !payAmount || Number(payAmount) <= 0 || isSwapping || isQuoteLoading || !quoteData || !!quoteData.error || isLiquidityError;
 
   useEffect(() => {
     if (backendData && backendData.assets && backendData.assets.length > 0 && !payToken && !receiveToken) {
@@ -151,9 +240,9 @@ function App() {
     };
   }, [searchQuery, selectedNetwork]);
 
-
   useEffect(() => {
     let isMounted = true; 
+    const controller = new AbortController(); 
 
     const fetchRisk = async () => {
       if (!receiveToken) {
@@ -165,7 +254,8 @@ function App() {
         setRiskData({ 
           isSafeDefault: true, 
           message: "Нативная монета сети. Максимальный уровень доверия.",
-          score: 0 
+          score: 0,
+          security_analysis: { verdict: { total_liquidity_usd: 1000000000 } } 
         });
         return;
       }
@@ -175,17 +265,24 @@ function App() {
         setRiskData({
           isSafeDefault: true,
           message: "Авторизованный стейблкоин. Актив обеспечен фиатными резервами.",
-          score: 1 
+          score: 1,
+          security_analysis: { verdict: { total_liquidity_usd: 1000000000 } } 
         });
         return;
       }
 
       setIsRiskLoading(true);
       try {
-        const response = await fetch(`http://127.0.0.1:8000/api/analyze/${receiveToken.chain_id}/${receiveToken.address}`);
+        const response = await fetch(`http://127.0.0.1:8000/api/analyze/${receiveToken.chain_id}/${receiveToken.address}`, { signal: controller.signal });
+        
+        if (!response.ok) {
+           throw new Error(`Ошибка сервера: ${response.status}`);
+        }
+        
         const data = await response.json();
         if (isMounted) setRiskData(data);
       } catch (error) {
+        if (error.name === 'AbortError') return; 
         console.error("Ошибка API анализатора:", error);
         if (isMounted) setRiskData({ error: true, message: "Не удалось получить данные. Возможно токен слишком новый." });
       } finally {
@@ -193,9 +290,65 @@ function App() {
       }
     };
 
-    fetchRisk();
-    return () => { isMounted = false; };
+    const riskTimer = setTimeout(() => {
+      fetchRisk();
+    }, 600); 
+
+    return () => { 
+      isMounted = false; 
+      controller.abort(); 
+      clearTimeout(riskTimer); 
+    };
   }, [receiveToken]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedPayAmount(payAmount), 500);
+    return () => clearTimeout(timer);
+  }, [payAmount]);
+
+  useEffect(() => {
+    let intervalId;
+
+    const fetchQuote = async (isBackgroundRefresh = false) => {
+      if (!payToken || !receiveToken || !debouncedPayAmount || Number(debouncedPayAmount) <= 0) {
+        setQuoteData(null);
+        return;
+      }
+
+      if (!isBackgroundRefresh) setIsQuoteLoading(true);
+      
+      try {
+        const decimals = payToken.decimals || 18;
+        const amountWei = parseUnits(debouncedPayAmount.toString(), decimals).toString();
+        
+        const fromAddress = payToken.isNative ? "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" : payToken.address;
+        const toAddress = receiveToken.isNative ? "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" : receiveToken.address;
+
+        const response = await fetch(`http://127.0.0.1:8000/api/quote?chain_id=${receiveToken.chain_id}&from_token=${fromAddress}&to_token=${toAddress}&amount_wei=${amountWei}`);
+        if (!response.ok) throw new Error("Quote API Error");
+
+        const data = await response.json();
+        setQuoteData(data);
+      } catch (error) {
+        console.error("Ошибка API котировки:", error);
+        if (!isBackgroundRefresh) setQuoteData({ error: "Ошибка соединения с сервером" });
+      } finally {
+        if (!isBackgroundRefresh) setIsQuoteLoading(false);
+      }
+    };
+
+    fetchQuote();
+
+    if (payToken && receiveToken && debouncedPayAmount && Number(debouncedPayAmount) > 0) {
+      intervalId = setInterval(() => {
+        fetchQuote(true); 
+      }, 5000);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [payToken, receiveToken, debouncedPayAmount]);
 
   const handleNetworkChange = (network) => {
     setSelectedNetwork(network);
@@ -248,13 +401,19 @@ function App() {
   };
 
   const handleSwapSides = () => {
-    const temp = payToken;
+    const tempToken = payToken;
     setPayToken(receiveToken);
-    setReceiveToken(temp);
+    setReceiveToken(tempToken);
     setRiskData(null); 
+
+    if (quoteData && !quoteData.error && quoteData.expected_output_human) {
+      const newAmount = Number(quoteData.expected_output_human).toFixed(6).replace(/\.?0+$/, '');
+      setPayAmount(newAmount);
+    } else {
+      setPayAmount('');
+    }
   };
 
-  // === ЛОГИКА БОЕВОГО ОБМЕНА ===
   const handleSwap = async () => {
     if (!payToken || !receiveToken || !payAmount || !address) return;
     
@@ -266,8 +425,6 @@ function App() {
       const amountWei = parseUnits(payAmount, decimals).toString();
 
       const reqBody = {
-        // Мы принудительно шлем "56", так как 1inch работает только с реальными ID.
-        // Если в будущем добавишь Ethereum, тут можно будет сделать условие.
         chainId: "56", 
         fromToken: payToken.isNative ? "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" : payToken.address,
         toToken: receiveToken.isNative ? "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" : receiveToken.address,
@@ -275,7 +432,6 @@ function App() {
         userWallet: address
       };
 
-      // 1. Проверяем Approve
       const approveRes = await fetch("http://127.0.0.1:8000/api/build-approve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -292,10 +448,9 @@ function App() {
         });
         
         setSwapStatus('Approve отправлен! Ждем блокчейн...');
-        await new Promise(r => setTimeout(r, 4000)); // Пауза, чтобы сеть успела обновить данные
+        await new Promise(r => setTimeout(r, 4000)); 
       }
 
-      // 2. Запрашиваем сам Swap
       setSwapStatus('Формирование маршрута...');
       const swapRes = await fetch("http://127.0.0.1:8000/api/build-swap", {
         method: "POST",
@@ -306,7 +461,6 @@ function App() {
 
       if (swapData.error) throw new Error(swapData.error);
 
-      // 3. Вызываем MetaMask для отправки обмена
       setSwapStatus('Подтвердите Swap в MetaMask...');
       const swapHash = await sendTransactionAsync({
         to: swapData.tx.to,
@@ -314,23 +468,43 @@ function App() {
         value: swapData.tx.value ? BigInt(swapData.tx.value) : 0n,
       });
 
-      alert(`✅ Обмен успешно отправлен!\nХэш транзакции: ${swapHash}`);
+      // === СОХРАНЕНИЕ В ИСТОРИЮ С ПРИВЯЗКОЙ К КОШЕЛЬКУ ===
+      const newHistoryTx = {
+        id: Date.now(),
+        timestamp: new Date().toISOString(),
+        userWallet: address, // Сохраняем кошелек, с которого был обмен!
+        payAmount: debouncedPayAmount,
+        paySymbol: payToken.symbol,
+        receiveAmount: receiveAmount,
+        receiveSymbol: receiveToken.symbol,
+        priceImpact: priceImpact,
+        route: quoteData?.route_used || ['1inch API'],
+        hash: swapHash
+      };
+
+      setSwapHistory(prev => {
+        const updated = [newHistoryTx, ...prev];
+        localStorage.setItem('swapHistory', JSON.stringify(updated));
+        return updated;
+      });
+
+      addNotification('Обмен успешно выполнен!', 'success', swapHash);
       setPayAmount('');
+      setIsConfirmModalOpen(false); 
       
     } catch (error) {
       console.error("Swap Error:", error);
-      alert(`❌ Ошибка обмена: ${error.message || 'Транзакция отклонена или не хватило газа.'}`);
+      addNotification(`Ошибка обмена: ${error.message || 'Транзакция отклонена.'}`, 'error');
     } finally {
       setIsSwapping(false);
       setSwapStatus('');
     }
   };
 
-const displayAssets = useMemo(() => {
+  const displayAssets = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
     let assets = (backendData && backendData.assets) ? backendData.assets : [];
     
-    // Мгновенная фильтрация по выбранной сети
     if (selectedNetwork.id !== 'all') {
       assets = assets.filter(token => String(token.chain_id) === String(selectedNetwork.id));
     }
@@ -346,25 +520,22 @@ const displayAssets = useMemo(() => {
 
     let combined = [...localFiltered, ...globalFiltered];
 
-    // === МАГИЯ ДЛЯ ПЕСОЧНИЦЫ: ИСКУССТВЕННО ДОБАВЛЯЕМ НАШ BNB ===
     if (isConnected && (selectedNetwork.id === 'all' || selectedNetwork.id === '56')) {
       const hasBnb = combined.find(t => t.symbol === 'BNB' && t.isNative);
-      // Если BNB нет в списке с бэкенда, и мы не ищем что-то другое
       if (!hasBnb && (!query || 'bnb'.includes(query))) {
-        combined.unshift({ // unshift ставит BNB на самое первое место
+        combined.unshift({
           symbol: "BNB",
           name: "BNB (Local Sandbox)",
-          address: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", // Стандарт для 1inch
+          address: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", 
           balance: "10000.00",
           usd_value: 0,
           isNative: true,
           isSpam: false,
           chain_id: '56',
-          decimals: 18 // Важно для функции parseUnits
+          decimals: 18 
         });
       }
     }
-    // ==========================================================
 
     const isEVMAddress = /^0x[a-fA-F0-9]{40}$/i.test(query);
     if (isEVMAddress && combined.length === 0 && !isSearching) {
@@ -383,7 +554,6 @@ const displayAssets = useMemo(() => {
 
     return combined;
   }, [backendData, searchQuery, globalSearchAssets, selectedNetwork, isSearching, isConnected]); 
-  // Не забудь добавить isConnected в массив зависимостей в конце!
 
   const security = riskData ? riskData.security_analysis : null;
   const verdict = security ? security.verdict : null;
@@ -391,7 +561,6 @@ const displayAssets = useMemo(() => {
   const market = (metrics && metrics.market_dynamics) ? metrics.market_dynamics.metrics : null;
   const creator = metrics ? metrics.creator_analysis : null;
   const whales = metrics ? metrics.whale_analysis : null;
-  const trading = riskData ? riskData.trading_info : null;
 
   const displayReceiveSymbol = (riskData && !isRiskLoading && riskData.token_info?.symbol && riskData.token_info.symbol !== 'Unknown') 
     ? riskData.token_info.symbol 
@@ -401,6 +570,29 @@ const displayAssets = useMemo(() => {
     <div className="min-h-screen bg-[#05070a] text-white flex flex-col p-4 font-sans selection:bg-blue-500/30 relative overflow-x-hidden">
       <style>{scrollbarStyles}</style>
       
+      {/* === БЛОК УВЕДОМЛЕНИЙ (ТОСТЫ) === */}
+      <div className="fixed top-24 right-6 z-[100] flex flex-col gap-3 pointer-events-none">
+        {notifications.map(n => (
+          <div key={n.id} className={`pointer-events-auto flex items-start gap-3 p-4 rounded-xl shadow-2xl border w-80 animate-in slide-in-from-right-8 fade-in duration-300 ${n.type === 'success' ? 'bg-emerald-950/90 border-emerald-500/20 shadow-emerald-900/20' : 'bg-rose-950/90 border-rose-500/20 shadow-rose-900/20'}`}>
+            {n.type === 'success' ? <CheckCircle className="text-emerald-500 shrink-0 mt-0.5" size={20} /> : <XCircle className="text-rose-500 shrink-0 mt-0.5" size={20} />}
+            <div className="flex-1">
+              <h4 className={`text-sm font-bold ${n.type === 'success' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {n.type === 'success' ? 'Транзакция успешна' : 'Ошибка транзакции'}
+              </h4>
+              <p className="text-xs text-slate-300 mt-1 break-words">{n.message}</p>
+              {n.hash && (
+                <a href={`https://bscscan.com/tx/${n.hash}`} target="_blank" rel="noreferrer" className="text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors mt-2 flex items-center gap-1 w-max">
+                  Смотреть в эксплорере <ExternalLink size={10} />
+                </a>
+              )}
+            </div>
+            <button onClick={() => setNotifications(prev => prev.filter(x => x.id !== n.id))} className="text-slate-500 hover:text-white transition-colors">
+              <X size={16}/>
+            </button>
+          </div>
+        ))}
+      </div>
+
       <div className="absolute top-6 right-6 z-10">
         <ConnectKitButton />
       </div>
@@ -411,7 +603,20 @@ const displayAssets = useMemo(() => {
         <div className={`w-full max-w-[480px] shrink-0 transition-all duration-500 mx-auto lg:mx-0 sticky top-20`}>
           
           <div className="bg-[#0f172a] rounded-t-3xl p-5 pb-10 relative border border-[#1e293b] border-b-0 shadow-2xl focus-within:border-blue-500/50 transition-colors">
-            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Продать</div>
+            
+            {/* === ИЗМЕНЕНО: Кнопка вызова истории обменов ПОКАЗЫВАЕТСЯ ТОЛЬКО ПРИ ПОДКЛЮЧЕННОМ КОШЕЛЬКЕ === */}
+            <div className="flex justify-between items-center mb-3">
+              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Продать</div>
+              {isConnected && address && (
+                <button 
+                  onClick={() => setIsHistoryModalOpen(true)} 
+                  className="text-xs font-semibold text-slate-500 hover:text-blue-400 transition-colors flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-blue-500/10"
+                >
+                  <Clock size={14} /> История
+                </button>
+              )}
+            </div>
+            
             <div className="flex justify-between items-center">
               <input 
                 type="number" 
@@ -435,9 +640,9 @@ const displayAssets = useMemo(() => {
                 <ChevronDown size={18} className="text-slate-400" />
               </button>
             </div>
-            <div className="flex justify-between text-sm text-slate-500 mt-3 font-medium">
-              <span>{(payToken && payToken.usd_value) ? `$${(payAmount * (payToken.usd_value / payToken.balance)).toFixed(2)}` : ''}</span> 
-              <span>Баланс: {payToken ? payToken.balance : '0.00'}</span>
+            <div className="flex justify-between text-sm text-slate-500 mt-3 font-medium px-1">
+              <span>{payUsdDisplay}</span> 
+              <span>Баланс: {payToken ? (payToken.isCustom ? '0.00' : payToken.balance) : '0.00'}</span>
             </div>
 
             <div 
@@ -451,12 +656,15 @@ const displayAssets = useMemo(() => {
           <div className="bg-[#0f172a] rounded-b-3xl p-5 pt-10 border border-[#1e293b] border-t-0 mt-1 shadow-2xl">
             <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Купить</div>
             <div className="flex justify-between items-center">
+              
               <input 
                 type="text" 
                 placeholder="0" 
+                value={isQuoteLoading ? "..." : (quoteData && !quoteData.error && quoteData.expected_output_human ? formatNumber(quoteData.expected_output_human, 6) : "")}
                 readOnly
-                className="bg-transparent text-4xl w-1/2 outline-none placeholder-slate-700 font-medium cursor-not-allowed"
+                className={`bg-transparent text-4xl w-1/2 outline-none placeholder-slate-700 font-medium cursor-not-allowed ${isQuoteLoading ? 'animate-pulse text-slate-500' : 'text-white'}`}
               />
+
               <button 
                 onClick={() => openModal('receive')}
                 className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl font-bold transition-all text-white shadow-lg shrink-0 ${receiveToken ? 'bg-[#1e293b] hover:bg-[#334155] border border-slate-700' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-500/20'}`}
@@ -472,6 +680,11 @@ const displayAssets = useMemo(() => {
                 <ChevronDown size={18} />
               </button>
             </div>
+            
+            <div className="flex justify-between text-sm text-slate-500 mt-3 font-medium px-1">
+              <span>{receiveUsdDisplay}</span>
+              <span>Баланс: {receiveToken ? (receiveToken.isCustom ? '0.00' : receiveToken.balance) : '0.00'}</span>
+            </div>
           </div>
 
           {(!isConnected && !isConnecting && !isReconnecting) ? (
@@ -485,17 +698,29 @@ const displayAssets = useMemo(() => {
               <Loader2 className="animate-spin" size={20} /> Загрузка кошелька...
             </button>
           ) : (
-            <button 
-              onClick={handleSwap}
-              disabled={!payToken || !receiveToken || !payAmount || isRiskLoading || isSwapping}
-              className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed text-white font-bold text-lg py-4.5 rounded-2xl mt-5 shadow-xl shadow-blue-600/20 transition-all active:scale-[0.98] py-4"
-            >
-              {isSwapping ? (
-                 <span className="flex items-center justify-center gap-2">
-                    <Loader2 size={20} className="animate-spin" /> {swapStatus}
-                 </span>
-              ) : !payAmount ? "Введите сумму" : !receiveToken ? "Выберите токен" : "Подтвердить обмен"}
-            </button>
+            <>
+              {isWarningPriceImpact && !isLiquidityError && !isQuoteLoading && quoteData && !quoteData.error && (
+                <div className="mt-4 bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 flex gap-3 items-start animate-in fade-in">
+                  <AlertTriangle className="text-rose-500 shrink-0 mt-0.5" size={16} />
+                  <div className="text-sm text-rose-400 leading-snug">
+                    <strong className="block mb-1">Высокое проскальзывание!</strong>
+                    Ожидаемые потери стоимости: ~{priceImpact.toFixed(1)}%. Выполняйте обмен под свою ответственность.
+                  </div>
+                </div>
+              )}
+              
+              <button 
+                onClick={() => setIsConfirmModalOpen(true)}
+                disabled={isSwapDisabled}
+                className={`w-full font-bold text-lg rounded-2xl mt-5 shadow-xl transition-all active:scale-[0.98] py-4 flex justify-center items-center gap-2 ${
+                  isWarningPriceImpact && !isSwapDisabled
+                    ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/20 text-white'
+                    : 'bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed text-white shadow-blue-600/20'
+                }`}
+              >
+                {getButtonText()}
+              </button>
+            </>
           )}
         </div>
 
@@ -652,40 +877,6 @@ const displayAssets = useMemo(() => {
                       </div>
                     )}
                   </div>
-
-                  {trading && (
-                    <div className="mt-6 border-t border-[#1e293b] pt-6">
-                      <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                        <ArrowRightLeft size={14} className="text-blue-500" /> Агрегатор ликвидности
-                      </h4>
-                      <div className="bg-gradient-to-br from-[#05070a] to-[#0a1120] p-4 rounded-xl border border-[#1e293b]">
-                        <div className="flex justify-between text-sm mb-3">
-                          <span className="text-slate-500">Симуляция инвестиции</span>
-                          <span className="text-white font-medium">{trading.simulated_investment}</span>
-                        </div>
-                        
-                        {(trading.best_route && trading.best_route.expected_output_human) ? (
-                          <>
-                            <div className="flex justify-between text-sm mb-3">
-                              <span className="text-slate-500">Маршрут (DEX)</span>
-                              <span className="text-blue-400 font-mono text-xs bg-blue-500/10 px-2 py-1 rounded">
-                                {(trading.best_route.route_used && trading.best_route.route_used.join(' → '))}
-                              </span>
-                            </div>
-                            <div className="flex justify-between text-sm pt-3 border-t border-[#1e293b]">
-                              <span className="text-slate-400">Ожидаемый выход</span>
-                              <span className="text-emerald-400 font-bold text-lg">
-                                {formatNumber(trading.best_route.expected_output_human, 4)} {trading.best_route.token_symbol}
-                              </span>
-                            </div>
-                          </>
-                        ) : (
-                           <div className="font-medium text-sm text-amber-500 text-center py-2">{trading.best_route}</div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  
                 </div>
               ) : null}
             </div>
@@ -693,7 +884,7 @@ const displayAssets = useMemo(() => {
         )}
       </div>
 
-      {/* === МОДАЛЬНОЕ ОКНО === */}
+      {/* === МОДАЛЬНОЕ ОКНО ПОИСКА ТОКЕНОВ === */}
       {modalMode && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="bg-[#0f172a] w-full max-w-[440px] h-[640px] rounded-[32px] border border-[#1e293b] flex flex-col relative shadow-2xl overflow-hidden">
@@ -815,6 +1006,210 @@ const displayAssets = useMemo(() => {
           </div>
         </div>
       )}
+
+      {/* === МОДАЛЬНОЕ ОКНО ПОДТВЕРЖДЕНИЯ ОБМЕНА === */}
+      {isConfirmModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[60] p-4">
+          <div className="bg-[#0f172a] w-full max-w-[420px] rounded-[32px] border border-[#1e293b] flex flex-col relative shadow-2xl p-5 animate-in zoom-in-95 duration-200">
+            
+            <div className="flex justify-between items-center mb-6 px-1">
+              <h2 className="text-lg font-bold text-white">Вы выполняете своп</h2>
+              <button onClick={() => !isSwapping && setIsConfirmModalOpen(false)} className="text-slate-400 hover:text-white transition bg-[#1e293b] p-1.5 rounded-xl">
+                <X size={20} />
+              </button>
+            </div>
+
+            {isWarningPriceImpact && (
+              <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 mb-6 flex gap-3 items-start animate-in fade-in">
+                <AlertTriangle className="text-rose-500 shrink-0 mt-0.5" size={16} />
+                <div className="text-sm text-rose-400 leading-snug">
+                  <strong className="block mb-1 text-white">Высокое влияние на цену ({priceImpact.toFixed(1)}%)</strong>
+                  Вы подтверждаете, что готовы к финансовым потерям при этом обмене.
+                </div>
+              </div>
+            )}
+
+            {/* Блок с токенами */}
+            <div className="space-y-4 mb-6 px-1">
+              <div className="flex justify-between items-center">
+                <div>
+                  <div className="text-3xl font-bold text-white tracking-tight">{debouncedPayAmount} {payToken?.symbol}</div>
+                  <div className="text-sm text-slate-500 mt-1 font-medium">{payUsdDisplay}</div>
+                </div>
+                <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center font-bold text-white text-sm shadow-inner relative">
+                  {payToken?.symbol.charAt(0)}
+                  <div className="absolute -bottom-1 -right-1 text-[12px] bg-[#0f172a] rounded-full">🌐</div>
+                </div>
+              </div>
+
+              <div className="relative flex items-center py-2">
+                <div className="absolute left-0 w-full h-[1px] bg-[#1e293b]"></div>
+                <div className="w-8 h-8 bg-[#0f172a] border border-[#1e293b] rounded-full flex items-center justify-center relative z-10 text-slate-400">
+                  <ArrowDown size={16} />
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <div>
+                  <div className="text-3xl font-bold text-white tracking-tight">{formatNumber(receiveAmount, 5)} {receiveToken?.symbol}</div>
+                  <div className="text-sm text-slate-500 mt-1 font-medium">{receiveUsdDisplay}</div>
+                </div>
+                <div className="w-10 h-10 bg-slate-700 border border-slate-600 rounded-full flex items-center justify-center font-bold text-white text-sm shadow-inner relative">
+                  {receiveToken?.symbol.charAt(0)}
+                  <div className="absolute -bottom-1 -right-1 text-[12px] bg-[#0f172a] rounded-full">🌐</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Сводка транзакции (Аккордеон) */}
+            <div className="border-t border-[#1e293b] pt-4 mb-6 px-1">
+              <button 
+                onClick={() => setShowDetails(!showDetails)}
+                className="flex items-center justify-center gap-2 text-sm text-slate-400 hover:text-slate-300 font-medium w-full mb-4 transition-colors"
+              >
+                {showDetails ? 'Показать меньше' : 'Показать больше'}
+                {showDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
+
+              {showDetails && (
+                <div className="space-y-3 text-sm animate-in fade-in slide-in-from-top-2">
+                  <div className="flex justify-between items-start">
+                    <span className="text-slate-500">Курс</span>
+                    <div className="text-right">
+                       <div className="text-white font-medium">1 {payToken?.symbol} = {formatNumber(receiveAmount / Number(debouncedPayAmount), 6)} {receiveToken?.symbol}</div>
+                       <div className="text-slate-500 text-xs">({getTokenPrice(payToken) > 0 ? `$${getTokenPrice(payToken).toFixed(2)}` : '$-'})</div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 flex items-center gap-1">Макс. проскальзывание <Info size={12} className="opacity-50"/></span>
+                    <span className="text-white font-medium"><span className="bg-[#1e293b] text-slate-400 px-1.5 py-0.5 rounded text-xs mr-1 font-normal">Авто</span> 10 %</span>
+                  </div>
+                  
+                  <div className="flex justify-between items-start">
+                    <span className="text-slate-500 flex items-center gap-1 mt-0.5">Маршрут <Info size={12} className="opacity-50"/></span>
+                    <span className="text-blue-400 font-medium text-xs flex flex-wrap justify-end gap-1 max-w-[60%] text-right">
+                      {quoteData?.route_used && quoteData.route_used.length > 0 ? quoteData.route_used.map((r, i) => (
+                        <span key={i} className="bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">{r}</span>
+                      )) : '1inch API'}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button 
+              onClick={handleSwap}
+              disabled={isSwapping}
+              className={`w-full font-bold text-lg py-4 rounded-2xl shadow-xl transition-all active:scale-[0.98] flex justify-center items-center gap-2 ${
+                  isWarningPriceImpact 
+                    ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/20 text-white disabled:bg-slate-800 disabled:text-slate-500'
+                    : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/20 text-white disabled:bg-slate-800 disabled:text-slate-500'
+                }`}
+            >
+              {isSwapping ? <><Loader2 className="animate-spin" size={20} /> {swapStatus}</> : (isWarningPriceImpact ? "Понимаю риск, выполнить своп" : "Подтвердить и выполнить своп")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* === НОВОЕ МОДАЛЬНОЕ ОКНО ИСТОРИИ ОБМЕНОВ === */}
+      {isHistoryModalOpen && (
+         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[70] p-4">
+            <div className="bg-[#0f172a] w-full max-w-[440px] max-h-[80vh] rounded-[32px] border border-[#1e293b] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                <div className="p-6 pb-4 flex justify-between items-center border-b border-[#1e293b]">
+                   <h2 className="text-xl font-bold flex items-center gap-2"><Clock className="text-blue-500"/> История обменов</h2>
+                   <button onClick={() => setIsHistoryModalOpen(false)} className="bg-[#1e293b] p-2 rounded-xl text-slate-400 hover:text-white transition-colors">
+                     <X size={20}/>
+                   </button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                   {!hasHistory ? (
+                      <div className="text-center text-slate-500 py-10 flex flex-col items-center gap-3">
+                         <Clock size={40} className="opacity-20" />
+                         Здесь пока ничего нет
+                      </div>
+                   ) : (
+                      Object.entries(groupedHistory).map(([date, txs]) => (
+                         <div key={date} className="mb-6">
+                            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 px-2">{date}</h3>
+                            <div className="space-y-2">
+                               {txs.map(tx => (
+                                  <button key={tx.id} onClick={() => setSelectedHistoryTx(tx)} className="w-full bg-[#05070a] border border-[#1e293b] hover:border-blue-500/50 p-3 rounded-xl flex justify-between items-center transition-all group">
+                                     <div className="flex items-center gap-4">
+                                        <div className="text-slate-500 text-xs font-mono bg-[#1e293b] px-2 py-1 rounded-md">
+                                           {new Date(tx.timestamp).toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'})}
+                                        </div>
+                                        <div className="font-medium text-sm flex items-center gap-2">
+                                           <span className="text-white">{tx.payAmount} {tx.paySymbol}</span>
+                                           <ArrowRightLeft size={12} className="text-slate-600" />
+                                           <span className="text-emerald-400">{formatNumber(tx.receiveAmount, 4)} {tx.receiveSymbol}</span>
+                                        </div>
+                                     </div>
+                                     <ChevronRight size={16} className="text-slate-600 group-hover:text-blue-400 transition-colors" />
+                                  </button>
+                               ))}
+                            </div>
+                         </div>
+                      ))
+                   )}
+                </div>
+            </div>
+         </div>
+      )}
+
+      {/* === ДЕТАЛИ ИСТОРИЧЕСКОЙ ТРАНЗАКЦИИ === */}
+      {selectedHistoryTx && (
+         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[80] p-4">
+            <div className="bg-[#0f172a] w-full max-w-[380px] rounded-[24px] border border-[#1e293b] flex flex-col shadow-2xl p-6 animate-in zoom-in-95 duration-200 relative">
+               <div className="flex justify-between items-center mb-6">
+                  <h3 className="font-bold text-lg">Детали обмена</h3>
+                  <button onClick={() => setSelectedHistoryTx(null)} className="text-slate-400 hover:text-white bg-[#1e293b] p-1.5 rounded-xl"><X size={20}/></button>
+               </div>
+               
+               <div className="flex flex-col items-center justify-center mb-6">
+                  <div className="w-12 h-12 bg-emerald-500/10 rounded-full flex items-center justify-center mb-3">
+                     <CheckCircle2 size={24} className="text-emerald-500" />
+                  </div>
+                  <div className="text-xs text-slate-500 font-medium bg-[#1e293b] px-3 py-1 rounded-full">
+                     {new Date(selectedHistoryTx.timestamp).toLocaleString('ru-RU')}
+                  </div>
+               </div>
+
+               <div className="bg-[#05070a] border border-[#1e293b] rounded-xl p-4 space-y-4 mb-6">
+                  <div className="flex justify-between items-center">
+                     <span className="text-slate-500 text-sm">Продано</span>
+                     <span className="font-bold text-white">{selectedHistoryTx.payAmount} {selectedHistoryTx.paySymbol}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                     <span className="text-slate-500 text-sm">Получено</span>
+                     <span className="font-bold text-emerald-400">{formatNumber(selectedHistoryTx.receiveAmount, 6)} {selectedHistoryTx.receiveSymbol}</span>
+                  </div>
+                  {selectedHistoryTx.priceImpact > 0 && (
+                     <div className="flex justify-between items-center pt-3 border-t border-[#1e293b]">
+                        <span className="text-slate-500 text-sm">Проскальзывание</span>
+                        <span className="text-rose-400 font-medium text-sm">{selectedHistoryTx.priceImpact.toFixed(2)}%</span>
+                     </div>
+                  )}
+                  <div className="flex justify-between items-start pt-3 border-t border-[#1e293b]">
+                     <span className="text-slate-500 text-sm mt-0.5">Маршрут</span>
+                     <div className="flex flex-wrap justify-end gap-1 max-w-[60%]">
+                        {selectedHistoryTx.route.map((r, i) => (
+                           <span key={i} className="text-[10px] font-medium bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/20">{r}</span>
+                        ))}
+                     </div>
+                  </div>
+               </div>
+
+               {selectedHistoryTx.hash && (
+                 <a href={`https://bscscan.com/tx/${selectedHistoryTx.hash}`} target="_blank" rel="noreferrer" className="w-full py-3 bg-[#1e293b] hover:bg-[#334155] rounded-xl flex items-center justify-center gap-2 text-sm font-bold text-white transition-colors">
+                    Проверить в Explorer <ExternalLink size={16} />
+                 </a>
+               )}
+            </div>
+         </div>
+      )}
+
     </div>
   );
 }

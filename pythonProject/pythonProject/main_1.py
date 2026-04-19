@@ -81,24 +81,6 @@ def run_diploma_analyzer(chain_id, token_address, amount_to_spend_usd=10):
         market_report
     )
 
-    # БЛОК 2: АГРЕГАТОР ЛИКВИДНОСТИ
-    swap_report = None
-    base_token_info = BASE_TOKENS.get(str(chain_id))
-
-    if base_token_info:
-        print(f"\nСимуляция покупки на {amount_to_spend_usd} {base_token_info['symbol']}...")
-
-        amount_wei = int(amount_to_spend_usd * (10 ** base_token_info['decimals']))
-
-        swap_report = get_best_price_quote(
-            chain_id=chain_id,
-            from_token=base_token_info['address'],
-            to_token=token_address,
-            amount_wei=amount_wei
-        )
-    else:
-        print(f"\nАгрегатор: Сеть {chain_id} пока не настроена для симуляции торгов (нужен адрес стейблкоина).")
-
     # БЛОК 3: ФОРМИРОВАНИЕ JSON-ОТВЕТА
     final_json = {
         "token_info": {
@@ -114,10 +96,6 @@ def run_diploma_analyzer(chain_id, token_address, amount_to_spend_usd=10):
                 "creator_analysis": dev_report,
                 "market_dynamics": market_report
             }
-        },
-        "trading_info": {
-            "simulated_investment": f"{amount_to_spend_usd} {base_token_info['symbol'] if base_token_info else 'USD'}",
-            "best_route": swap_report if swap_report else "Маршрут недоступен"
         }
     }
 
