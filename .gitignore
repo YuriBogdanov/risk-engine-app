@@ -7,6 +7,7 @@ env/
 # Файлы с ключами (ОБЯЗАТЕЛЬНО!)
 .env
 config.py
+startCommands.txt
 
 # Системные файлы
 .DS_Store

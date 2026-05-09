@@ -135,8 +135,14 @@ function App() {
     return (isFinite(price) && !isNaN(price)) ? price : 0;
   };
 
-  const payUsd = payAmount ? (Number(payAmount) * getTokenPrice(payToken)) : 0;
-  const payUsdDisplay = payUsd > 0 ? `$${payUsd.toFixed(2)}` : '$-';
+  // 1. Проверяем, совпадает ли текущий ввод с тем, что ушло в обработку (защита от "мигания")
+  const isSyncing = payAmount !== debouncedPayAmount;
+
+  // Используем debouncedPayAmount для расчетов "в фоне"
+  const payUsd = debouncedPayAmount ? (Number(debouncedPayAmount) * getTokenPrice(payToken)) : 0;
+
+  // Оставляем payAmount только для визуального отображения цены под инпутом
+  const payUsdDisplay = payAmount ? `$${(Number(payAmount) * getTokenPrice(payToken)).toFixed(2)}` : '$-';
 
   const receiveAmount = (quoteData && !quoteData.error && !isQuoteLoading) ? Number(quoteData.expected_output_human) : 0;
   const receiveUsd = receiveAmount ? (receiveAmount * getTokenPrice(receiveToken)) : 0;
@@ -144,13 +150,22 @@ function App() {
 
   const poolLiquidity = riskData?.security_analysis?.verdict?.total_liquidity_usd || 0;
   const isLiquidityError = poolLiquidity > 0 && payUsd > poolLiquidity;
-  
-  const priceImpact = (payUsd > 0 && receiveUsd > 0) ? ((payUsd - receiveUsd) / payUsd * 100) : 0;
-  const isWarningPriceImpact = priceImpact > 10; 
+
+  // 2. Рассчитываем Price Impact
+  const priceImpact = (!isQuoteLoading && !isSyncing && payUsd > 0 && receiveUsd > 0) 
+    ? ((payUsd - receiveUsd) / payUsd * 100) 
+    : 0;
+
+  // 3. Варнинг появляется ТОЛЬКО если:
+  // - Загрузка завершена (!isQuoteLoading)
+  // - Пользователь перестал печатать (!isSyncing)
+  // - Проскальзывание реально больше 10%
+  const isWarningPriceImpact = !isQuoteLoading && !isSyncing && priceImpact > 10;
 
   const getButtonText = () => {
     if (!payAmount || Number(payAmount) <= 0) return "Введите сумму";
     if (!receiveToken) return "Выберите токен";
+    if (isQuoteLoading) return "Поиск лучшей цены..."; // Добавлено состояние загрузки для текста
     if (isLiquidityError) return "Превышена ликвидность пула";
     if (!quoteData || quoteData.error) return "Маршрут не найден";
     if (isWarningPriceImpact) return `Опасный обмен (${priceImpact.toFixed(1)}%)`;
