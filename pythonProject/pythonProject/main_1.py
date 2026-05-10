@@ -1,5 +1,6 @@
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 # импорт провайдеров
 from providers.goplus_api import get_clean_token_info
@@ -48,26 +49,28 @@ def run_diploma_analyzer(chain_id, token_address, amount_to_spend_usd=10):
         print("Ошибка: Нет данных от GoPlus. Анализ остановлен.")
         return
 
-    moralis_holders = get_top_token_holders(chain_id, token_address)
     creator_address = goplus_raw.get('creator_address')
-    creator_transfers = get_wallet_token_transfers(chain_id, creator_address, token_address)
-
-    # DexScreener is the primary source for on-chain liquidity.
-    # CMC supplements with more accurate volume/price_change when available.
     token_symbol = goplus_raw.get('token_symbol', 'Unknown')
 
-    print("Запрос ликвидности из DexScreener...")
-    market_raw = get_market_dynamics(token_address)
+    # Run independent API calls in parallel to cut analysis time from ~40s to ~10s.
+    print("Параллельный запрос данных: Moralis holders, transfers, DexScreener, CMC...")
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        future_holders   = executor.submit(get_top_token_holders, chain_id, token_address)
+        future_transfers = executor.submit(get_wallet_token_transfers, chain_id, creator_address, token_address)
+        future_dex       = executor.submit(get_market_dynamics, token_address)
+        future_cmc       = executor.submit(get_cmc_market_data, token_address, token_symbol)
+
+    moralis_holders   = future_holders.result()
+    creator_transfers = future_transfers.result()
+    market_raw        = future_dex.result()
+    cmc_data          = future_cmc.result()
+
     if market_raw:
         market_raw["source"] = "DexScreener"
-
-    print(f"Запрос данных CMC для {token_symbol} (volume/price supplement)...")
-    cmc_data = get_cmc_market_data(token_address, token_symbol)
-    if cmc_data and market_raw:
-        if cmc_data.get("volume_24h", 0) > 0:
+        if cmc_data and cmc_data.get("volume_24h", 0) > 0:
             market_raw["volume_24h"] = cmc_data["volume_24h"]
             print(f"CMC volume applied: {cmc_data['volume_24h']}")
-    elif cmc_data and not market_raw:
+    elif cmc_data:
         market_raw = cmc_data
 
     # 1.2 Отработка кастомных модулей On-Chain аналитики
