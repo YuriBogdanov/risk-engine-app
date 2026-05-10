@@ -73,6 +73,32 @@ def run_diploma_analyzer(chain_id, token_address, amount_to_spend_usd=10):
     elif cmc_data:
         market_raw = cmc_data
 
+    # Считаем ликвидность из GoPlus (сумма всех DEX-пулов в ответе GoPlus)
+    goplus_liquidity = sum(
+        float(dex.get('liquidity', '0') or '0')
+        for dex in goplus_raw.get('dex', [])
+    )
+
+    dex_liquidity = float((market_raw or {}).get('liquidity_usd', 0) or 0)
+
+    print(f"Ликвидность — DexScreener: ${dex_liquidity:,.2f} | GoPlus: ${goplus_liquidity:,.2f}")
+
+    if goplus_liquidity > dex_liquidity:
+        # GoPlus видит больше пулов — используем его данные
+        print(f"Используем ликвидность GoPlus (выше на ${goplus_liquidity - dex_liquidity:,.2f})")
+        if market_raw:
+            market_raw["liquidity_usd"] = goplus_liquidity
+            market_raw["source"] = "GoPlus+DexScreener"
+        else:
+            market_raw = {
+                "liquidity_usd": goplus_liquidity,
+                "volume_24h": 0,
+                "price_change_24h": 0,
+                "source": "GoPlus"
+            }
+    else:
+        print("Используем ликвидность DexScreener (выше или равна GoPlus)")
+
     # 1.2 Отработка кастомных модулей On-Chain аналитики
     whales_report = calculate_whale_manipulation_risk(goplus_raw, moralis_holders)
     dev_report = analyze_dev_dumping(goplus_raw, creator_transfers)
