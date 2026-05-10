@@ -330,7 +330,10 @@ function App() {
         return;
       }
 
-      if (!isBackgroundRefresh) setIsQuoteLoading(true);
+      if (!isBackgroundRefresh) {
+        setQuoteData(null);
+        setIsQuoteLoading(true);
+      }
       
       try {
         const decimals = payToken.decimals || 18;
