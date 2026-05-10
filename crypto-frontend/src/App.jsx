@@ -7,7 +7,7 @@ import {
   UserMinus, PieChart, Check, Globe, Clock, ExternalLink, Sun, Moon,
   GraduationCap, BarChart3
 } from 'lucide-react';
-import { useAccount, useSendTransaction } from 'wagmi';
+import { useAccount, useSendTransaction, useBalance, usePublicClient } from 'wagmi';
 import { parseUnits } from 'viem';
 
 const MOCK_NETWORKS = [
@@ -427,6 +427,44 @@ function App() {
 
   const { address, isConnected, isConnecting, isReconnecting } = useAccount();
   const { sendTransactionAsync } = useSendTransaction();
+  const publicClient = usePublicClient();
+
+  // === Live-баланс с RPC (без кэша/индексации Moralis) ===
+  const { data: payLiveBalance, refetch: refetchPayLive } = useBalance({
+    address: address,
+    token: (payToken && !payToken.isNative) ? payToken.address : undefined,
+    chainId: payToken ? Number(payToken.chain_id) : undefined,
+    query: {
+      enabled: !!payToken && !!address && isConnected,
+      refetchInterval: 10000,
+    },
+  });
+
+  const { data: receiveLiveBalance, refetch: refetchReceiveLive } = useBalance({
+    address: address,
+    token: (receiveToken && !receiveToken.isNative) ? receiveToken.address : undefined,
+    chainId: receiveToken ? Number(receiveToken.chain_id) : undefined,
+    query: {
+      enabled: !!receiveToken && !!address && isConnected,
+      refetchInterval: 10000,
+    },
+  });
+
+  const payBalanceNum = payLiveBalance
+    ? Number(payLiveBalance.formatted)
+    : Number(payToken?.balance || 0);
+
+  const receiveBalanceNum = receiveLiveBalance
+    ? Number(receiveLiveBalance.formatted)
+    : Number(receiveToken?.balance || 0);
+
+  const formatBalanceDisplay = (n) => {
+    if (!n || n === 0) return '0.00';
+    if (n < 0.0001) return n.toExponential(2);
+    if (n < 1) return n.toFixed(6);
+    if (n < 100) return n.toFixed(4);
+    return n.toFixed(2);
+  };
 
   const [backendData, setBackendData] = useState(null);
   const [isLoadingAssets, setIsLoadingAssets] = useState(false);
@@ -908,11 +946,12 @@ function App() {
     setSwapStatus('Проверка разрешения...');
 
     try {
-      const decimals = payToken.decimals || 18;
+      // Декималы: приоритет live-данные RPC, потом payToken, иначе 18
+      const decimals = payLiveBalance?.decimals ?? payToken.decimals ?? 18;
       const amountWei = parseUnits(payAmount, decimals).toString();
 
       const reqBody = {
-        chainId: "56",
+        chainId: String(payToken.chain_id || "56"),
         fromToken: payToken.isNative ? "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" : payToken.address,
         toToken: receiveToken.isNative ? "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" : receiveToken.address,
         amountWei: amountWei,
@@ -927,14 +966,29 @@ function App() {
       const approveData = await approveRes.json();
 
       if (approveData.needsApprove && approveData.tx) {
-        setSwapStatus('Ожидание Approve в MetaMask...');
-        await sendTransactionAsync({
+        setSwapStatus('Подтвердите Approve в MetaMask...');
+        const approveHash = await sendTransactionAsync({
           to: approveData.tx.to,
           data: approveData.tx.data,
           value: approveData.tx.value ? BigInt(approveData.tx.value) : 0n
         });
-        setSwapStatus('Approve отправлен! Ждем блокчейн...');
-        await new Promise(r => setTimeout(r, 4000));
+        setSwapStatus('Ожидание подтверждения approve в блокчейне...');
+        // Критично: ждём попадания approve в блок, иначе следующий swap
+        // упадёт на eth_estimateGas (allowance ещё 0)
+        if (publicClient && approveHash) {
+          try {
+            await publicClient.waitForTransactionReceipt({
+              hash: approveHash,
+              timeout: 60_000,
+              confirmations: 1,
+            });
+          } catch (e) {
+            console.warn("Approve receipt timeout, fallback sleep", e);
+            await new Promise(r => setTimeout(r, 5000));
+          }
+        } else {
+          await new Promise(r => setTimeout(r, 5000));
+        }
       }
 
       setSwapStatus('Формирование маршрута...');
@@ -976,7 +1030,24 @@ function App() {
       addNotification('Обмен успешно выполнен!', 'success', swapHash);
       setPayAmount('');
       setIsConfirmModalOpen(false);
-      setTimeout(() => fetchAssets(selectedNetwork.id), 2500);
+
+      // Ждём попадания swap-tx в блок, потом обновляем балансы
+      if (publicClient && swapHash) {
+        try {
+          await publicClient.waitForTransactionReceipt({
+            hash: swapHash,
+            timeout: 90_000,
+            confirmations: 1,
+          });
+        } catch (e) {
+          console.warn("Swap receipt wait timeout", e);
+        }
+      }
+      // Live-балансы читаются с RPC — обновляем сразу
+      refetchPayLive?.();
+      refetchReceiveLive?.();
+      // Бэкенд-портфель с задержкой (Moralis индексирует медленно)
+      setTimeout(() => fetchAssets(selectedNetwork.id), 3000);
 
     } catch (error) {
       console.error("Swap Error:", error);
@@ -1519,14 +1590,14 @@ function App() {
                 </div>
                 <div className="flex justify-between text-sm text-[var(--text-muted)] mt-3 font-medium px-1">
                   <span>{payUsdDisplay}</span>
-                  <span>Баланс: {payToken ? (payToken.isCustom ? '0.00' : payToken.balance) : '0.00'}</span>
+                  <span>Баланс: {payToken ? formatBalanceDisplay(payBalanceNum) : '0.00'}</span>
                 </div>
-                {payToken && Number(payToken.balance) > 0 && (
+                {payToken && payBalanceNum > 0 && (
                   <div className="flex gap-1.5 mt-2 px-1">
                     {[25, 50, 75, 100].map(pct => (
                       <button
                         key={pct}
-                        onClick={() => setPayAmount((Number(payToken.balance) * pct / 100).toFixed(6))}
+                        onClick={() => setPayAmount((payBalanceNum * pct / 100).toFixed(6))}
                         className="flex-1 text-xs font-semibold py-1 rounded-lg bg-[var(--bg-input)] hover:bg-blue-500/20 hover:text-blue-400 text-[var(--text-muted)] border border-[var(--border)] transition-colors"
                       >
                         {pct === 100 ? 'MAX' : `${pct}%`}
@@ -1578,7 +1649,7 @@ function App() {
 
                 <div className="flex justify-between text-sm text-[var(--text-muted)] mt-3 font-medium px-1">
                   <span>{receiveUsdDisplay}</span>
-                  <span>Баланс: {receiveToken ? (receiveToken.isCustom ? '0.00' : receiveToken.balance) : '0.00'}</span>
+                  <span>Баланс: {receiveToken ? formatBalanceDisplay(receiveBalanceNum) : '0.00'}</span>
                 </div>
               </div>
 
