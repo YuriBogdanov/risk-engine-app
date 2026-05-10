@@ -7,9 +7,8 @@ const config = createConfig(
   getDefaultConfig({
     chains: [bsc, mainnet, base], // Ставим bsc на первое место
     transports: {
-        [mainnet.id]: http('https://eth.llamarpc.com'), 
-        // ВОТ ОНА МАГИЯ: Мы перенаправляем BSC в твою песочницу!
-        [bsc.id]: http('http://127.0.0.1:8545'),
+        [mainnet.id]: http('https://eth.llamarpc.com'),
+        [bsc.id]: http('https://bsc-dataseed1.binance.org'),
         [base.id]: http('https://mainnet.base.org'),
     },
     walletConnectProjectId: "test-project-id",
