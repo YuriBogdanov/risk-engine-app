@@ -450,15 +450,16 @@ function App() {
     },
   });
 
-  // Приоритет: live-баланс с RPC если > 0, иначе бэкенд-баланс.
-  // Если RPC вернул 0 ошибочно (rate-limit, задержка) — показываем известный баланс.
+  // Если live-баланс загружен (не null) — доверяем ему всегда, включая 0.
+  // 0 после продажи — это правильное значение, не «ошибка загрузки».
+  // Если live ещё не пришёл (null) — используем известный бэкенд-баланс как fallback.
   const payLiveNum = payLiveBalance != null ? Number(payLiveBalance.formatted) : null;
   const payBackendNum = Number(payToken?.balance || 0);
-  const payBalanceNum = (payLiveNum != null && payLiveNum > 0) ? payLiveNum : payBackendNum;
+  const payBalanceNum = payLiveNum !== null ? payLiveNum : payBackendNum;
 
   const receiveLiveNum = receiveLiveBalance != null ? Number(receiveLiveBalance.formatted) : null;
   const receiveBackendNum = Number(receiveToken?.balance || 0);
-  const receiveBalanceNum = (receiveLiveNum != null && receiveLiveNum > 0) ? receiveLiveNum : receiveBackendNum;
+  const receiveBalanceNum = receiveLiveNum !== null ? receiveLiveNum : receiveBackendNum;
 
   const formatBalanceDisplay = (n) => {
     if (!n || n === 0) return '0.00';
@@ -555,18 +556,23 @@ function App() {
   };
 
   const isSyncing = payAmount !== debouncedPayAmount;
-  const payUsd = debouncedPayAmount ? (Number(debouncedPayAmount) * getTokenPrice(payToken)) : 0;
-  const payUsdDisplay = payAmount ? `$${(Number(payAmount) * getTokenPrice(payToken)).toFixed(2)}` : '$-';
 
   const receiveAmount = (quoteData && !quoteData.error && !isQuoteLoading) ? Number(quoteData.expected_output_human) : 0;
   const receiveUsd = receiveAmount ? (receiveAmount * getTokenPrice(receiveToken)) : 0;
   const receiveUsdDisplay = receiveUsd > 0 ? `$${receiveUsd.toFixed(2)}` : '$-';
 
+  // Если цена токена неизвестна (DexScreener не вернул priceUsd), берём из котировки:
+  // payUsd ≈ receiveUsd (обе стороны одной сделки в USD почти равны).
+  const payTokenPrice = getTokenPrice(payToken);
+  const payUsdRaw = payAmount ? Number(payAmount) * payTokenPrice : 0;
+  const payUsd = payUsdRaw > 0 ? payUsdRaw : (receiveUsd > 0 ? receiveUsd : 0);
+  const payUsdDisplay = payUsd > 0 ? `$${payUsd.toFixed(2)}` : (payAmount ? '$-' : '$-');
+
   const poolLiquidity = riskData?.security_analysis?.verdict?.total_liquidity_usd || 0;
   const isLiquidityError = poolLiquidity > 0 && payUsd > poolLiquidity;
 
-  const priceImpact = (!isQuoteLoading && !isSyncing && payUsd > 0 && receiveUsd > 0)
-    ? ((payUsd - receiveUsd) / payUsd * 100)
+  const priceImpact = (!isQuoteLoading && !isSyncing && payUsdRaw > 0 && receiveUsd > 0)
+    ? ((payUsdRaw - receiveUsd) / payUsdRaw * 100)
     : 0;
 
   const isWarningPriceImpact = !isQuoteLoading && !isSyncing && priceImpact > 10;
@@ -1036,6 +1042,10 @@ function App() {
       addNotification('Обмен успешно выполнен!', 'success', swapHash);
       setPayAmount('');
       setIsConfirmModalOpen(false);
+
+      // Немедленно обнуляем баланс payToken — мы только что его потратили.
+      // Это убирает стейл-значение до того как RPC подтвердит 0.
+      setPayToken(prev => prev ? { ...prev, balance: '0', usd_value: 0 } : prev);
 
       // Ждём попадания swap-tx в блок, потом обновляем балансы
       if (publicClient && swapHash) {
