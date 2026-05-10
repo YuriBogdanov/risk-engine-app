@@ -17,17 +17,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# === СИСТЕМА КЭШИРОВАНИЯ ===
-# Чтобы не спамить API (Moralis, GoPlus) при быстрой смене токенов
 ANALYSIS_CACHE = {}
-CACHE_TTL_SECONDS = 60  # Храним результат анализа 60 секунд
+CACHE_TTL_SECONDS = 60
+
+PORTFOLIO_CACHE = {}
+PORTFOLIO_CACHE_TTL = 30
 
 
 @app.get("/api/assets/{chain_id}/{wallet_address}")
 def fetch_assets(chain_id: str, wallet_address: str):
+    cache_key = f"{chain_id}_{wallet_address.lower()}"
+    now = time.time()
+    if cache_key in PORTFOLIO_CACHE:
+        cached = PORTFOLIO_CACHE[cache_key]
+        if now - cached["time"] < PORTFOLIO_CACHE_TTL:
+            print(f"⚡ Portfolio from cache for: {wallet_address}")
+            return cached["data"]
+
     print(f"Запрос балансов для: {wallet_address} в сети {chain_id}")
     portfolio = build_user_portfolio(chain_id, wallet_address)
-    return {"status": "success", "assets": portfolio}
+    result = {"status": "success", "assets": portfolio}
+    PORTFOLIO_CACHE[cache_key] = {"time": now, "data": result}
+    return result
 
 
 @app.get("/api/analyze/{chain_id}/{token_address}")
