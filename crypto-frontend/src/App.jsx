@@ -1338,7 +1338,19 @@ function App() {
                       {ANALYZER_NETWORKS.map(net => (
                         <div
                           key={net.id}
-                          onClick={(e) => { e.stopPropagation(); setAnalyzerNetwork(net); setIsAnalyzerNetworkOpen(false); setAnalyzerToken(null); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAnalyzerNetwork(net);
+                            setIsAnalyzerNetworkOpen(false);
+                            // Полный сброс состояния поиска при смене сети,
+                            // иначе старый запрос перезапускается на новой сети
+                            // и пользователь видит результаты для неправильной сети
+                            setAnalyzerToken(null);
+                            setAnalyzerRiskData(null);
+                            setAnalyzerQuery('');
+                            setAnalyzerSearchResults([]);
+                            setAnalyzerDropdownOpen(false);
+                          }}
                           className={`flex items-center gap-3 p-3 hover:bg-[var(--bg-input)] transition cursor-pointer ${analyzerNetwork.id === net.id ? 'bg-[var(--bg-input)]' : ''}`}
                         >
                           <span className="text-xl">{net.icon}</span>

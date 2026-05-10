@@ -16,11 +16,22 @@ def get_market_dynamics(token_address):
         if not data.get('pairs'):
             return None
 
-        # Берем первый пул (обычно он самый крупный и ликвидный)
-        main_pair = data['pairs'][0]
+        # Сортируем пулы по ликвидности (самый большой — первый)
+        pairs = sorted(
+            data['pairs'],
+            key=lambda p: p.get('liquidity', {}).get('usd', 0) or 0,
+            reverse=True
+        )
+
+        # Суммируем ликвидность ВСЕХ пулов: токен торгуется на нескольких DEX одновременно
+        # (PancakeSwap v2/v3, Biswap и др.), агрегаторы типа OKX учитывают все пулы
+        total_liquidity = sum(p.get('liquidity', {}).get('usd', 0) or 0 for p in pairs)
+
+        # Цену и объём берём из наиболее ликвидного пула
+        main_pair = pairs[0]
 
         return {
-            "liquidity_usd": main_pair.get('liquidity', {}).get('usd', 0),
+            "liquidity_usd": total_liquidity,
             "volume_24h": main_pair.get('volume', {}).get('h24', 0),
             "price_change_24h": main_pair.get('priceChange', {}).get('h24', 0)
         }
