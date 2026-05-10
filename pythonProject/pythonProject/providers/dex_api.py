@@ -27,12 +27,18 @@ def get_market_dynamics(token_address):
         # (PancakeSwap v2/v3, Biswap и др.), агрегаторы типа OKX учитывают все пулы
         total_liquidity = sum(p.get('liquidity', {}).get('usd', 0) or 0 for p in pairs)
 
-        # Цену и объём берём из наиболее ликвидного пула
+        # Суммируем объём торгов по всем пулам — как и для ликвидности.
+        # CMC считает объём глобально (CEX + DEX), что завышает vol/liq ratio
+        # и вызывает ложные срабатывания "Аномального объема".
+        # DexScreener — только DEX, поэтому соотношение корректно.
+        total_volume = sum(p.get('volume', {}).get('h24', 0) or 0 for p in pairs)
+
+        # Изменение цены берём из наиболее ликвидного пула
         main_pair = pairs[0]
 
         return {
             "liquidity_usd": total_liquidity,
-            "volume_24h": main_pair.get('volume', {}).get('h24', 0),
+            "volume_24h": total_volume,
             "price_change_24h": main_pair.get('priceChange', {}).get('h24', 0)
         }
 

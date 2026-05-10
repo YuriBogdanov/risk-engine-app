@@ -6,7 +6,6 @@ from concurrent.futures import ThreadPoolExecutor
 from providers.goplus_api import get_clean_token_info
 from providers.moralis_api import get_top_token_holders, get_wallet_token_transfers
 from providers.dex_api import get_market_dynamics
-from providers.cmc_api import get_cmc_market_data
 from providers.aggregator_api import get_best_price_quote
 
 # импорт бизнес-логики
@@ -50,30 +49,23 @@ def run_diploma_analyzer(chain_id, token_address, amount_to_spend_usd=10):
         return
 
     creator_address = goplus_raw.get('creator_address')
-    token_symbol = goplus_raw.get('token_symbol', 'Unknown')
 
-    # Run independent API calls in parallel to cut analysis time from ~40s to ~10s.
-    print("Параллельный запрос данных: Moralis holders, transfers, DexScreener, CMC...")
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    # Параллельный запрос: Moralis (holders + transfers) и DexScreener
+    print("Параллельный запрос данных: Moralis holders, transfers, DexScreener...")
+    with ThreadPoolExecutor(max_workers=3) as executor:
         future_holders   = executor.submit(get_top_token_holders, chain_id, token_address)
         future_transfers = executor.submit(get_wallet_token_transfers, chain_id, creator_address, token_address)
         future_dex       = executor.submit(get_market_dynamics, token_address)
-        future_cmc       = executor.submit(get_cmc_market_data, token_address, token_symbol)
 
     moralis_holders   = future_holders.result()
     creator_transfers = future_transfers.result()
     market_raw        = future_dex.result()
-    cmc_data          = future_cmc.result()
 
     if market_raw:
         market_raw["source"] = "DexScreener"
-        if cmc_data and cmc_data.get("volume_24h", 0) > 0:
-            market_raw["volume_24h"] = cmc_data["volume_24h"]
-            print(f"CMC volume applied: {cmc_data['volume_24h']}")
-    elif cmc_data:
-        market_raw = cmc_data
 
-    # Считаем ликвидность из GoPlus (сумма всех DEX-пулов в ответе GoPlus)
+    # Ликвидность: берём max(GoPlus, DexScreener).
+    # GoPlus суммирует пулы по-своему и иногда видит больше пулов, чем DexScreener.
     goplus_liquidity = sum(
         float(dex.get('liquidity', '0') or '0')
         for dex in goplus_raw.get('dex', [])
@@ -84,11 +76,10 @@ def run_diploma_analyzer(chain_id, token_address, amount_to_spend_usd=10):
     print(f"Ликвидность — DexScreener: ${dex_liquidity:,.2f} | GoPlus: ${goplus_liquidity:,.2f}")
 
     if goplus_liquidity > dex_liquidity:
-        # GoPlus видит больше пулов — используем его данные
         print(f"Используем ликвидность GoPlus (выше на ${goplus_liquidity - dex_liquidity:,.2f})")
         if market_raw:
             market_raw["liquidity_usd"] = goplus_liquidity
-            market_raw["source"] = "GoPlus+DexScreener"
+            market_raw["source"] = "GoPlus/DexScreener"
         else:
             market_raw = {
                 "liquidity_usd": goplus_liquidity,

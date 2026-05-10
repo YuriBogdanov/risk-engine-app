@@ -261,7 +261,7 @@ def calculate_total_risk_score(goplus_data, whales_report, dev_report, market_re
     else:
         safe_factors.append("Архитектура неизменна (не Proxy).")
 
-    # 3. Рыночные риски (Ликвидность берем ИСКЛЮЧИТЕЛЬНО из CMC/DexScreener)
+    # 3. Рыночные риски (Ликвидность: max из GoPlus и DexScreener)
     total_liquidity_usd = 0.0
     if market_report and "metrics" in market_report:
         total_liquidity_usd = market_report["metrics"].get("raw_liquidity", 0.0)
