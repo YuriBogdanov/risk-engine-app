@@ -74,6 +74,7 @@ function App() {
 
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [isRiskExpanded, setIsRiskExpanded] = useState(false);
 
   const [notifications, setNotifications] = useState([]);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -413,9 +414,10 @@ function App() {
         }
       }
       setReceiveToken(token);
-      setRiskData(null); 
+      setRiskData(null);
+      setIsRiskExpanded(false);
     }
-    setModalMode(null); 
+    setModalMode(null);
   };
 
   const handleSwapSides = () => {
@@ -774,8 +776,9 @@ function App() {
                   <span className="text-sm text-rose-400">{riskData.message}</span>
                 </div>
               ) : riskData ? (
-                <div className="space-y-6">
-                  
+                <div className="space-y-4">
+
+                  {/* Risk index — always visible */}
                   <div className={`p-5 rounded-2xl border ${(verdict && verdict.score < 30) ? 'bg-emerald-500/5 border-emerald-500/20' : (verdict && verdict.score < 70) ? 'bg-amber-500/5 border-amber-500/20' : 'bg-rose-500/5 border-rose-500/20'}`}>
                     <div className="flex justify-between items-center mb-2">
                       <div className="text-sm font-medium text-slate-400">Индекс риска</div>
@@ -791,110 +794,124 @@ function App() {
                     </div>
                   </div>
 
-                  {market && (
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                        <Activity size={14} className="text-blue-400" /> Динамика рынка
-                      </h4>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="bg-[#05070a] p-3 rounded-xl border border-[#1e293b]">
-                          <div className="text-xs text-slate-500 mb-1 flex items-center gap-1"><Droplet size={12}/> Ликвидность</div>
-                          <div className="text-sm font-bold text-white">{market.liquidity_usd ? market.liquidity_usd : "—"}</div>
-                        </div>
-                        <div className="bg-[#05070a] p-3 rounded-xl border border-[#1e293b]">
-                          <div className="text-xs text-slate-500 mb-1 flex items-center gap-1"><TrendingUp size={12}/> Объем (24ч)</div>
-                          <div className="text-sm font-bold text-white">{market.volume_24h ? market.volume_24h : "—"}</div>
-                        </div>
-                        <div className="bg-[#05070a] p-3 rounded-xl border border-[#1e293b] col-span-2">
-                          <div className="text-xs text-slate-500 mb-1">Изменение цены (24ч)</div>
-                          <div className={`text-sm font-bold ${(market.price_change_24h && market.price_change_24h.includes('-')) ? 'text-rose-400' : 'text-emerald-400'}`}>
-                            {market.price_change_24h ? market.price_change_24h : "0.00%"}
+                  {/* Expand / collapse toggle */}
+                  <button
+                    onClick={() => setIsRiskExpanded(e => !e)}
+                    className="w-full flex items-center justify-center gap-2 text-sm text-slate-500 hover:text-slate-300 py-1 transition-colors"
+                  >
+                    {isRiskExpanded ? 'Свернуть' : 'Подробный анализ'}
+                    {isRiskExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                  </button>
+
+                  {/* Detailed sections — shown only when expanded */}
+                  {isRiskExpanded && (
+                    <div className="space-y-6">
+                      {market && (
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                            <Activity size={14} className="text-blue-400" /> Динамика рынка
+                          </h4>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="bg-[#05070a] p-3 rounded-xl border border-[#1e293b]">
+                              <div className="text-xs text-slate-500 mb-1 flex items-center gap-1"><Droplet size={12}/> Ликвидность</div>
+                              <div className="text-sm font-bold text-white">{market.liquidity_usd ? market.liquidity_usd : "—"}</div>
+                            </div>
+                            <div className="bg-[#05070a] p-3 rounded-xl border border-[#1e293b]">
+                              <div className="text-xs text-slate-500 mb-1 flex items-center gap-1"><TrendingUp size={12}/> Объем (24ч)</div>
+                              <div className="text-sm font-bold text-white">{market.volume_24h ? market.volume_24h : "—"}</div>
+                            </div>
+                            <div className="bg-[#05070a] p-3 rounded-xl border border-[#1e293b] col-span-2">
+                              <div className="text-xs text-slate-500 mb-1">Изменение цены (24ч)</div>
+                              <div className={`text-sm font-bold ${(market.price_change_24h && market.price_change_24h.includes('-')) ? 'text-rose-400' : 'text-emerald-400'}`}>
+                                {market.price_change_24h ? market.price_change_24h : "0.00%"}
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </div>
-                  )}
+                      )}
 
-                  {creator && (
-                    <div>
-                       <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                        <UserMinus size={14} className="text-purple-400" /> Анализ разработчика
-                      </h4>
-                      <div className="bg-[#05070a] p-4 rounded-xl border border-[#1e293b] space-y-3">
-                        <div className="flex justify-between items-center text-sm">
-                          <span className="text-slate-400">Продано создателем</span>
-                          <span className={`font-bold ${creator.dumped_percent > 80 ? 'text-rose-400' : 'text-white'}`}>{creator.dumped_percent}%</span>
+                      {creator && (
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                            <UserMinus size={14} className="text-purple-400" /> Анализ разработчика
+                          </h4>
+                          <div className="bg-[#05070a] p-4 rounded-xl border border-[#1e293b] space-y-3">
+                            <div className="flex justify-between items-center text-sm">
+                              <span className="text-slate-400">Продано создателем</span>
+                              <span className={`font-bold ${creator.dumped_percent > 80 ? 'text-rose-400' : 'text-white'}`}>{creator.dumped_percent}%</span>
+                            </div>
+                            <div className="flex justify-between items-center text-sm">
+                              <span className="text-slate-400">Урон ликвидности</span>
+                              <span className="font-bold text-white">{creator.impact_percent}%</span>
+                            </div>
+                            {creator.dev_dump_risk && (
+                              <div className="mt-2 text-xs bg-rose-500/10 text-rose-400 px-3 py-2 rounded-lg border border-rose-500/20">
+                                ⚠️ Высокий риск дампа разработчика
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex justify-between items-center text-sm">
-                          <span className="text-slate-400">Урон ликвидности</span>
-                          <span className="font-bold text-white">{creator.impact_percent}%</span>
+                      )}
+
+                      {whales && (
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                            <PieChart size={14} className="text-cyan-400" /> Распределение китов
+                          </h4>
+                          <div className="bg-[#05070a] p-4 rounded-xl border border-[#1e293b]">
+                            <div className="flex justify-between items-center mb-3">
+                              <span className="text-sm text-slate-400">Доля ТОП-10 кошельков</span>
+                              <span className={`text-sm font-bold px-2 py-1 rounded-md ${whales.is_whale_manipulation_risk ? 'bg-rose-500/20 text-rose-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
+                                {whales.top_private_percent}%
+                              </span>
+                            </div>
+                            <div className="space-y-2 max-h-[120px] overflow-y-auto pr-2 custom-scrollbar">
+                              {(whales.whales_list && whales.whales_list.length > 0) ? whales.whales_list.map((w, idx) => (
+                                <div key={idx} className="flex justify-between items-center text-xs border-b border-[#1e293b] pb-1 last:border-0">
+                                  <span className="text-slate-500 font-mono bg-[#0f172a] px-1.5 py-0.5 rounded">{formatAddress(w.address)}</span>
+                                  <span className="text-slate-300">{w.percent}%</span>
+                                </div>
+                              )) : null}
+                            </div>
+                          </div>
                         </div>
-                        {creator.dev_dump_risk && (
-                          <div className="mt-2 text-xs bg-rose-500/10 text-rose-400 px-3 py-2 rounded-lg border border-rose-500/20">
-                            ⚠️ Высокий риск дампа разработчика
+                      )}
+
+                      <div className="pt-2">
+                        {(verdict && verdict.warnings && verdict.warnings.length > 0) && (
+                          <div className="mb-4">
+                            <h4 className="text-xs font-bold text-amber-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                              <AlertTriangle size={14} /> Найдены риски
+                            </h4>
+                            <div className="space-y-2">
+                              {verdict.warnings.map((warn, idx) => (
+                                <div key={idx} className="flex gap-3 items-start bg-amber-500/5 p-3 rounded-xl border border-amber-500/10">
+                                  <AlertTriangle size={14} className="text-amber-500 shrink-0 mt-0.5" />
+                                  <span className="text-sm text-slate-300 leading-snug">{warn}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {(verdict && verdict.safe_metrics && verdict.safe_metrics.length > 0) && (
+                          <div>
+                            <h4 className="text-xs font-bold text-emerald-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                              <CheckCircle2 size={14} /> Позитивные индикаторы
+                            </h4>
+                            <div className="space-y-2">
+                              {verdict.safe_metrics.map((metric, idx) => (
+                                <div key={idx} className="flex gap-3 items-start p-2">
+                                  <Check size={16} className="text-emerald-500 shrink-0" />
+                                  <span className="text-sm text-slate-400">{metric}</span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>
                     </div>
                   )}
-
-                  {whales && (
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                        <PieChart size={14} className="text-cyan-400" /> Распределение китов
-                      </h4>
-                      <div className="bg-[#05070a] p-4 rounded-xl border border-[#1e293b]">
-                        <div className="flex justify-between items-center mb-3">
-                          <span className="text-sm text-slate-400">Доля ТОП-10 кошельков</span>
-                          <span className={`text-sm font-bold px-2 py-1 rounded-md ${whales.is_whale_manipulation_risk ? 'bg-rose-500/20 text-rose-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
-                            {whales.top_private_percent}%
-                          </span>
-                        </div>
-                        <div className="space-y-2 max-h-[120px] overflow-y-auto pr-2 custom-scrollbar">
-                          {(whales.whales_list && whales.whales_list.length > 0) ? whales.whales_list.map((w, idx) => (
-                            <div key={idx} className="flex justify-between items-center text-xs border-b border-[#1e293b] pb-1 last:border-0">
-                              <span className="text-slate-500 font-mono bg-[#0f172a] px-1.5 py-0.5 rounded">{formatAddress(w.address)}</span>
-                              <span className="text-slate-300">{w.percent}%</span>
-                            </div>
-                          )) : null}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="pt-2">
-                    {(verdict && verdict.warnings && verdict.warnings.length > 0) && (
-                      <div className="mb-4">
-                        <h4 className="text-xs font-bold text-amber-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                          <AlertTriangle size={14} /> Найдены риски
-                        </h4>
-                        <div className="space-y-2">
-                          {verdict.warnings.map((warn, idx) => (
-                            <div key={idx} className="flex gap-3 items-start bg-amber-500/5 p-3 rounded-xl border border-amber-500/10">
-                              <AlertTriangle size={14} className="text-amber-500 shrink-0 mt-0.5" />
-                              <span className="text-sm text-slate-300 leading-snug">{warn}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {(verdict && verdict.safe_metrics && verdict.safe_metrics.length > 0) && (
-                      <div>
-                        <h4 className="text-xs font-bold text-emerald-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                          <CheckCircle2 size={14} /> Позитивные индикаторы
-                        </h4>
-                        <div className="space-y-2">
-                          {verdict.safe_metrics.map((metric, idx) => (
-                            <div key={idx} className="flex gap-3 items-start p-2">
-                              <Check size={16} className="text-emerald-500 shrink-0" />
-                              <span className="text-sm text-slate-400">{metric}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
                 </div>
               ) : null}
             </div>
