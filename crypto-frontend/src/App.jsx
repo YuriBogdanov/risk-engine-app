@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { ConnectKitButton } from "connectkit";
-import { 
-  ChevronDown, ChevronUp, ChevronRight, Search, X, ArrowDown, Settings, Wallet, 
-  AlertTriangle, ShieldCheck, ShieldAlert, Activity, Info, 
-  CheckCircle2, CheckCircle, XCircle, Loader2, ArrowRightLeft, Droplet, TrendingUp, 
-  UserMinus, PieChart, Check, Globe, Clock, ExternalLink
+import {
+  ChevronDown, ChevronUp, ChevronRight, Search, X, ArrowDown, Settings, Wallet,
+  AlertTriangle, ShieldCheck, ShieldAlert, Activity, Info,
+  CheckCircle2, CheckCircle, XCircle, Loader2, ArrowRightLeft, Droplet, TrendingUp,
+  UserMinus, PieChart, Check, Globe, Clock, ExternalLink, Sun, Moon, BookOpen
 } from 'lucide-react';
 import { useAccount, useSendTransaction } from 'wagmi';
 import { parseUnits } from 'viem';
@@ -35,16 +35,23 @@ const scrollbarStyles = `
     background: transparent;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #1e293b;
+    background: var(--scrollbar);
     border-radius: 10px;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #334155;
+    background: var(--border);
   }
 `;
 
 function App() {
-  const [modalMode, setModalMode] = useState(null); 
+  const [isDark, setIsDark] = useState(() => localStorage.getItem('theme') !== 'light');
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDark);
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+  }, [isDark]);
+
+  const [modalMode, setModalMode] = useState(null);
   const [isNetworkDropdownOpen, setIsNetworkDropdownOpen] = useState(false);
   const [selectedNetwork, setSelectedNetwork] = useState(MOCK_NETWORKS[0]); 
   
@@ -587,7 +594,7 @@ function App() {
     : receiveToken?.symbol;
 
   return (
-    <div className="min-h-screen bg-[#05070a] text-white flex flex-col p-4 font-sans selection:bg-blue-500/30 relative overflow-x-hidden">
+    <div className="min-h-screen bg-[var(--bg-base)] text-[var(--text-primary)] flex flex-col p-4 font-sans selection:bg-blue-500/30 relative overflow-x-hidden">
       <style>{scrollbarStyles}</style>
       
       {/* === БЛОК УВЕДОМЛЕНИЙ (ТОСТЫ) === */}
@@ -613,7 +620,28 @@ function App() {
         ))}
       </div>
 
-      <div className="absolute top-6 right-6 z-10">
+      <div className="absolute top-6 left-6 z-10">
+        <a
+          href="http://localhost:5174"
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium
+                     bg-[var(--bg-card)] border-[var(--border)] text-[var(--text-muted)]
+                     hover:text-[var(--text-primary)] transition-colors"
+        >
+          <BookOpen size={15} /> Обучение
+        </a>
+      </div>
+
+      <div className="absolute top-6 right-6 z-10 flex items-center gap-3">
+        <button
+          onClick={() => setIsDark(d => !d)}
+          className="w-9 h-9 rounded-xl border flex items-center justify-center
+                     bg-[var(--bg-card)] border-[var(--border)] text-[var(--text-muted)]
+                     hover:text-[var(--text-primary)] transition-colors"
+        >
+          {isDark ? <Sun size={16} /> : <Moon size={16} />}
+        </button>
         <ConnectKitButton />
       </div>
       
@@ -622,11 +650,11 @@ function App() {
         {/* === ЛЕВАЯ ЧАСТЬ: ИНТЕРФЕЙС ОБМЕНА === */}
         <div className={`w-full max-w-[480px] shrink-0 transition-all duration-500 mx-auto lg:mx-0 sticky top-20`}>
           
-          <div className="bg-[#0f172a] rounded-t-3xl p-5 pb-10 relative border border-[#1e293b] border-b-0 shadow-2xl focus-within:border-blue-500/50 transition-colors">
+          <div className="bg-[var(--bg-card)] rounded-t-3xl p-5 pb-10 relative border border-[var(--border)] border-b-0 shadow-2xl focus-within:border-blue-500/50 transition-colors">
             
             {/* === ИЗМЕНЕНО: Кнопка вызова истории обменов ПОКАЗЫВАЕТСЯ ТОЛЬКО ПРИ ПОДКЛЮЧЕННОМ КОШЕЛЬКЕ === */}
             <div className="flex justify-between items-center mb-3">
-              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Продать</div>
+              <div className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">Продать</div>
               {isConnected && address && (
                 <button 
                   onClick={() => setIsHistoryModalOpen(true)} 
@@ -643,11 +671,11 @@ function App() {
                 placeholder="0" 
                 value={payAmount}
                 onChange={(e) => setPayAmount(e.target.value)}
-                className="bg-transparent text-4xl w-1/2 outline-none placeholder-slate-700 font-medium"
+                className="bg-transparent text-4xl w-1/2 outline-none placeholder-[var(--border)] text-[var(--text-primary)] font-medium"
               />
               <button 
                 onClick={() => openModal('pay')}
-                className="flex items-center gap-2 bg-[#1e293b] hover:bg-[#334155] px-4 py-2 rounded-2xl font-semibold transition-all border border-slate-700 shrink-0"
+                className="flex items-center gap-2 bg-[var(--bg-input)] hover:bg-[var(--border)] px-4 py-2 rounded-2xl font-semibold transition-all border border-[var(--border)] shrink-0"
               >
                 {payToken ? (
                   <>
@@ -660,21 +688,21 @@ function App() {
                 <ChevronDown size={18} className="text-slate-400" />
               </button>
             </div>
-            <div className="flex justify-between text-sm text-slate-500 mt-3 font-medium px-1">
+            <div className="flex justify-between text-sm text-[var(--text-muted)] mt-3 font-medium px-1">
               <span>{payUsdDisplay}</span> 
               <span>Баланс: {payToken ? (payToken.isCustom ? '0.00' : payToken.balance) : '0.00'}</span>
             </div>
 
             <div 
               onClick={handleSwapSides}
-              className="absolute -bottom-5 left-1/2 -translate-x-1/2 w-11 h-11 bg-[#0f172a] border-4 border-[#05070a] rounded-2xl flex items-center justify-center z-10 cursor-pointer hover:scale-110 hover:bg-[#1e293b] transition-all shadow-lg group"
+              className="absolute -bottom-5 left-1/2 -translate-x-1/2 w-11 h-11 bg-[var(--bg-card)] border-4 border-[#05070a] rounded-2xl flex items-center justify-center z-10 cursor-pointer hover:scale-110 hover:bg-[var(--bg-input)] transition-all shadow-lg group"
             >
               <ArrowDown size={20} className="text-blue-500 group-hover:text-blue-400" />
             </div>
           </div>
 
-          <div className="bg-[#0f172a] rounded-b-3xl p-5 pt-10 border border-[#1e293b] border-t-0 mt-1 shadow-2xl">
-            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Купить</div>
+          <div className="bg-[var(--bg-card)] rounded-b-3xl p-5 pt-10 border border-[var(--border)] border-t-0 mt-1 shadow-2xl">
+            <div className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-3">Купить</div>
             <div className="flex justify-between items-center">
               
               <input 
@@ -682,12 +710,12 @@ function App() {
                 placeholder="0" 
                 value={isQuoteLoading ? "..." : (quoteData && !quoteData.error && quoteData.expected_output_human ? formatNumber(quoteData.expected_output_human, 6) : "")}
                 readOnly
-                className={`bg-transparent text-4xl w-1/2 outline-none placeholder-slate-700 font-medium cursor-not-allowed ${isQuoteLoading ? 'animate-pulse text-slate-500' : 'text-white'}`}
+                className={`bg-transparent text-4xl w-1/2 outline-none placeholder-[var(--border)] font-medium cursor-not-allowed ${isQuoteLoading ? 'animate-pulse text-[var(--text-muted)]' : 'text-[var(--text-primary)]'}`}
               />
 
               <button 
                 onClick={() => openModal('receive')}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl font-bold transition-all text-white shadow-lg shrink-0 ${receiveToken ? 'bg-[#1e293b] hover:bg-[#334155] border border-slate-700' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-500/20'}`}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl font-bold transition-all text-white shadow-lg shrink-0 ${receiveToken ? 'bg-[var(--bg-input)] hover:bg-[var(--border)] border border-slate-700' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-500/20'}`}
               >
                 {receiveToken ? (
                   <>
@@ -701,7 +729,7 @@ function App() {
               </button>
             </div>
             
-            <div className="flex justify-between text-sm text-slate-500 mt-3 font-medium px-1">
+            <div className="flex justify-between text-sm text-[var(--text-muted)] mt-3 font-medium px-1">
               <span>{receiveUsdDisplay}</span>
               <span>Баланс: {receiveToken ? (receiveToken.isCustom ? '0.00' : receiveToken.balance) : '0.00'}</span>
             </div>
@@ -746,15 +774,15 @@ function App() {
 
         {/* === ПРАВАЯ ЧАСТЬ: ДЕТАЛЬНАЯ ПАНЕЛЬ АНАЛИЗА РИСКОВ === */}
         {receiveToken && (
-          <div className="w-full max-w-[480px] shrink-0 bg-[#0f172a] rounded-[32px] border border-[#1e293b] flex flex-col shadow-2xl animate-in slide-in-from-right-8 fade-in duration-500 mx-auto lg:mx-0 max-h-[85vh] overflow-hidden">
+          <div className="w-full max-w-[480px] shrink-0 bg-[var(--bg-card)] rounded-[32px] border border-[var(--border)] flex flex-col shadow-2xl animate-in slide-in-from-right-8 fade-in duration-500 mx-auto lg:mx-0 max-h-[85vh] overflow-hidden">
             
-            <div className="flex items-center gap-3 p-6 pb-4 bg-[#0f172a] border-b border-[#1e293b] sticky top-0 z-10 shrink-0">
+            <div className="flex items-center gap-3 p-6 pb-4 bg-[var(--bg-card)] border-b border-[var(--border)] sticky top-0 z-10 shrink-0">
               <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center">
                 <ShieldCheck className="text-blue-500" size={24} />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-white">Анализ {displayReceiveSymbol}</h3>
-                <p className="text-xs text-slate-400 font-mono mt-1">{formatAddress(receiveToken.address)}</p>
+                <h3 className="text-lg font-bold text-[var(--text-primary)]">Анализ {displayReceiveSymbol}</h3>
+                <p className="text-xs text-[var(--text-muted)] font-mono mt-1">{formatAddress(receiveToken.address)}</p>
               </div>
             </div>
 
@@ -762,8 +790,8 @@ function App() {
               {isRiskLoading ? (
                 <div className="flex flex-col items-center justify-center py-20">
                   <Loader2 className="animate-spin text-blue-500 mb-4" size={40} />
-                  <p className="text-slate-300 font-medium">Сбор данных из блокчейна...</p>
-                  <p className="text-xs text-slate-500 mt-2 text-center px-4">Анализируем смарт-контракт, кошельки холдеров и DEX пулы</p>
+                  <p className="text-[var(--text-primary)] font-medium">Сбор данных из блокчейна...</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-2 text-center px-4">Анализируем смарт-контракт, кошельки холдеров и DEX пулы</p>
                 </div>
               ) : (riskData && riskData.isSafeDefault) ? (
                 <div className="mt-4 flex items-center gap-3 bg-emerald-500/5 p-4 rounded-xl border border-emerald-500/10">
@@ -781,7 +809,7 @@ function App() {
                   {/* Risk index — always visible */}
                   <div className={`p-5 rounded-2xl border ${(verdict && verdict.score < 30) ? 'bg-emerald-500/5 border-emerald-500/20' : (verdict && verdict.score < 70) ? 'bg-amber-500/5 border-amber-500/20' : 'bg-rose-500/5 border-rose-500/20'}`}>
                     <div className="flex justify-between items-center mb-2">
-                      <div className="text-sm font-medium text-slate-400">Индекс риска</div>
+                      <div className="text-sm font-medium text-[var(--text-muted)]">Индекс риска</div>
                       <div className={`text-xs font-bold px-2 py-1 rounded-lg ${(verdict && verdict.score < 30) ? 'bg-emerald-500/20 text-emerald-400' : (verdict && verdict.score < 70) ? 'bg-amber-500/20 text-amber-400' : 'bg-rose-500/20 text-rose-400'}`}>
                         {(verdict && verdict.level) ? verdict.level : 'Анализ завершен'}
                       </div>
@@ -790,14 +818,14 @@ function App() {
                       <span className={`text-5xl font-extrabold ${(verdict && verdict.score < 30) ? 'text-emerald-500' : (verdict && verdict.score < 70) ? 'text-amber-500' : 'text-rose-500'}`}>
                         {(verdict && verdict.score) ? verdict.score : '0'}
                       </span>
-                      <span className="text-slate-500 mb-1 font-medium">/ 100</span>
+                      <span className="text-[var(--text-muted)] mb-1 font-medium">/ 100</span>
                     </div>
                   </div>
 
                   {/* Expand / collapse toggle */}
                   <button
                     onClick={() => setIsRiskExpanded(e => !e)}
-                    className="w-full flex items-center justify-center gap-2 text-sm text-slate-500 hover:text-slate-300 py-1 transition-colors"
+                    className="w-full flex items-center justify-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] py-1 transition-colors"
                   >
                     {isRiskExpanded ? 'Свернуть' : 'Подробный анализ'}
                     {isRiskExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
@@ -812,16 +840,16 @@ function App() {
                             <Activity size={14} className="text-blue-400" /> Динамика рынка
                           </h4>
                           <div className="grid grid-cols-2 gap-2">
-                            <div className="bg-[#05070a] p-3 rounded-xl border border-[#1e293b]">
-                              <div className="text-xs text-slate-500 mb-1 flex items-center gap-1"><Droplet size={12}/> Ликвидность</div>
-                              <div className="text-sm font-bold text-white">{market.liquidity_usd ? market.liquidity_usd : "—"}</div>
+                            <div className="bg-[var(--bg-item)] p-3 rounded-xl border border-[var(--border)]">
+                              <div className="text-xs text-[var(--text-muted)] mb-1 flex items-center gap-1"><Droplet size={12}/> Ликвидность</div>
+                              <div className="text-sm font-bold text-[var(--text-primary)]">{market.liquidity_usd ? market.liquidity_usd : "—"}</div>
                             </div>
-                            <div className="bg-[#05070a] p-3 rounded-xl border border-[#1e293b]">
-                              <div className="text-xs text-slate-500 mb-1 flex items-center gap-1"><TrendingUp size={12}/> Объем (24ч)</div>
-                              <div className="text-sm font-bold text-white">{market.volume_24h ? market.volume_24h : "—"}</div>
+                            <div className="bg-[var(--bg-item)] p-3 rounded-xl border border-[var(--border)]">
+                              <div className="text-xs text-[var(--text-muted)] mb-1 flex items-center gap-1"><TrendingUp size={12}/> Объем (24ч)</div>
+                              <div className="text-sm font-bold text-[var(--text-primary)]">{market.volume_24h ? market.volume_24h : "—"}</div>
                             </div>
-                            <div className="bg-[#05070a] p-3 rounded-xl border border-[#1e293b] col-span-2">
-                              <div className="text-xs text-slate-500 mb-1">Изменение цены (24ч)</div>
+                            <div className="bg-[var(--bg-item)] p-3 rounded-xl border border-[var(--border)] col-span-2">
+                              <div className="text-xs text-[var(--text-muted)] mb-1">Изменение цены (24ч)</div>
                               <div className={`text-sm font-bold ${(market.price_change_24h && market.price_change_24h.includes('-')) ? 'text-rose-400' : 'text-emerald-400'}`}>
                                 {market.price_change_24h ? market.price_change_24h : "0.00%"}
                               </div>
@@ -835,14 +863,14 @@ function App() {
                           <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
                             <UserMinus size={14} className="text-purple-400" /> Анализ разработчика
                           </h4>
-                          <div className="bg-[#05070a] p-4 rounded-xl border border-[#1e293b] space-y-3">
+                          <div className="bg-[var(--bg-item)] p-4 rounded-xl border border-[var(--border)] space-y-3">
                             <div className="flex justify-between items-center text-sm">
-                              <span className="text-slate-400">Продано создателем</span>
-                              <span className={`font-bold ${creator.dumped_percent > 80 ? 'text-rose-400' : 'text-white'}`}>{creator.dumped_percent}%</span>
+                              <span className="text-[var(--text-muted)]">Продано создателем</span>
+                              <span className={`font-bold ${creator.dumped_percent > 80 ? 'text-rose-400' : 'text-[var(--text-primary)]'}`}>{creator.dumped_percent}%</span>
                             </div>
                             <div className="flex justify-between items-center text-sm">
-                              <span className="text-slate-400">Урон ликвидности</span>
-                              <span className="font-bold text-white">{creator.impact_percent}%</span>
+                              <span className="text-[var(--text-muted)]">Урон ликвидности</span>
+                              <span className="font-bold text-[var(--text-primary)]">{creator.impact_percent}%</span>
                             </div>
                             {creator.dev_dump_risk && (
                               <div className="mt-2 text-xs bg-rose-500/10 text-rose-400 px-3 py-2 rounded-lg border border-rose-500/20">
@@ -858,18 +886,18 @@ function App() {
                           <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
                             <PieChart size={14} className="text-cyan-400" /> Распределение китов
                           </h4>
-                          <div className="bg-[#05070a] p-4 rounded-xl border border-[#1e293b]">
+                          <div className="bg-[var(--bg-item)] p-4 rounded-xl border border-[var(--border)]">
                             <div className="flex justify-between items-center mb-3">
-                              <span className="text-sm text-slate-400">Доля ТОП-10 кошельков</span>
+                              <span className="text-sm text-[var(--text-muted)]">Доля ТОП-10 кошельков</span>
                               <span className={`text-sm font-bold px-2 py-1 rounded-md ${whales.is_whale_manipulation_risk ? 'bg-rose-500/20 text-rose-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
                                 {whales.top_private_percent}%
                               </span>
                             </div>
                             <div className="space-y-2 max-h-[120px] overflow-y-auto pr-2 custom-scrollbar">
                               {(whales.whales_list && whales.whales_list.length > 0) ? whales.whales_list.map((w, idx) => (
-                                <div key={idx} className="flex justify-between items-center text-xs border-b border-[#1e293b] pb-1 last:border-0">
-                                  <span className="text-slate-500 font-mono bg-[#0f172a] px-1.5 py-0.5 rounded">{formatAddress(w.address)}</span>
-                                  <span className="text-slate-300">{w.percent}%</span>
+                                <div key={idx} className="flex justify-between items-center text-xs border-b border-[var(--border)] pb-1 last:border-0">
+                                  <span className="text-slate-500 font-mono bg-[var(--bg-card)] px-1.5 py-0.5 rounded">{formatAddress(w.address)}</span>
+                                  <span className="text-[var(--text-primary)]">{w.percent}%</span>
                                 </div>
                               )) : null}
                             </div>
@@ -903,7 +931,7 @@ function App() {
                               {verdict.safe_metrics.map((metric, idx) => (
                                 <div key={idx} className="flex gap-3 items-start p-2">
                                   <Check size={16} className="text-emerald-500 shrink-0" />
-                                  <span className="text-sm text-slate-400">{metric}</span>
+                                  <span className="text-sm text-[var(--text-muted)]">{metric}</span>
                                 </div>
                               ))}
                             </div>
@@ -922,43 +950,43 @@ function App() {
       {/* === МОДАЛЬНОЕ ОКНО ПОИСКА ТОКЕНОВ === */}
       {modalMode && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
-          <div className="bg-[#0f172a] w-full max-w-[440px] h-[640px] rounded-[32px] border border-[#1e293b] flex flex-col relative shadow-2xl overflow-hidden">
+          <div className="bg-[var(--bg-card)] w-full max-w-[440px] h-[640px] rounded-[32px] border border-[var(--border)] flex flex-col relative shadow-2xl overflow-hidden">
             <div className="p-6 pb-2 flex justify-between items-center">
-              <h2 className="text-xl font-bold">Выберите токен {modalMode === 'pay' ? 'для продажи' : 'для покупки'}</h2>
-              <button onClick={() => setModalMode(null)} className="bg-[#1e293b] p-2 rounded-xl text-slate-400 hover:text-white transition">
+              <h2 className="text-xl font-bold text-[var(--text-primary)]">Выберите токен {modalMode === 'pay' ? 'для продажи' : 'для покупки'}</h2>
+              <button onClick={() => setModalMode(null)} className="bg-[var(--bg-input)] p-2 rounded-xl text-slate-400 hover:text-white transition">
                 <X size={20} />
               </button>
             </div>
 
             <div className="p-5 flex gap-2 relative">
-              <div className="flex-1 bg-[#05070a] border border-[#1e293b] rounded-2xl flex items-center px-4 gap-3 focus-within:border-blue-500 transition-colors">
+              <div className="flex-1 bg-[var(--bg-item)] border border-[var(--border)] rounded-2xl flex items-center px-4 gap-3 focus-within:border-blue-500 transition-colors">
                 <Search size={20} className="text-slate-500 shrink-0" />
                 <input 
                   type="text" 
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Название или контракт (0x...)" 
-                  className="bg-transparent w-full py-3.5 outline-none text-white placeholder-slate-600 text-sm"
+                  className="bg-transparent w-full py-3.5 outline-none text-[var(--text-primary)] placeholder-slate-400 text-sm"
                 />
               </div>
               
               <button 
                 onClick={() => setIsNetworkDropdownOpen(!isNetworkDropdownOpen)}
-                className="bg-[#05070a] border border-[#1e293b] rounded-2xl px-4 flex items-center gap-1 hover:border-blue-500 transition-colors shrink-0 relative"
+                className="bg-[var(--bg-item)] border border-[var(--border)] rounded-2xl px-4 flex items-center gap-1 hover:border-blue-500 transition-colors shrink-0 relative"
               >
                 <span className="text-lg">{selectedNetwork.icon}</span>
                 <ChevronDown size={16} className="text-slate-500" />
                 
                 {isNetworkDropdownOpen && (
-                  <div className="absolute top-[110%] right-0 w-[200px] bg-[#0f172a] border border-[#1e293b] rounded-2xl shadow-xl z-50 overflow-hidden py-1">
+                  <div className="absolute top-[110%] right-0 w-[200px] bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-xl z-50 overflow-hidden py-1">
                     {MOCK_NETWORKS.map(net => (
                       <div 
                         key={net.id}
                         onClick={(e) => { e.stopPropagation(); handleNetworkChange(net); }}
-                        className={`flex items-center gap-3 p-3 hover:bg-[#1e293b] transition text-left cursor-pointer ${selectedNetwork.id === net.id ? 'bg-[#1e293b]' : ''}`}
+                        className={`flex items-center gap-3 p-3 hover:bg-[var(--bg-input)] transition text-left cursor-pointer ${selectedNetwork.id === net.id ? 'bg-[var(--bg-input)]' : ''}`}
                       >
                         <span className="text-xl">{net.icon}</span>
-                        <span className="font-bold text-sm text-white">{net.name}</span>
+                        <span className="font-bold text-sm text-[var(--text-primary)]">{net.name}</span>
                       </div>
                     ))}
                   </div>
@@ -967,12 +995,12 @@ function App() {
             </div>
 
             <div className="flex-1 overflow-y-auto px-2 pb-4 custom-scrollbar">
-              <div className="px-4 py-2 text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+              <div className="px-4 py-2 text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest flex items-center gap-2">
                 <Settings size={14} /> {searchQuery ? "Результаты поиска" : "Ваши активы"}
               </div>
               
               {(!isConnected && !isConnecting && !isReconnecting) ? (
-                <div className="flex flex-col items-center justify-center h-40 text-slate-500 text-center px-8">
+                <div className="flex flex-col items-center justify-center h-40 text-[var(--text-muted)] text-center px-8">
                   <Wallet size={48} className="mb-4 opacity-50" />
                   <p>Подключите кошелек, чтобы увидеть свои активы в сети</p>
                 </div>
@@ -994,24 +1022,24 @@ function App() {
                       <button 
                         key={i} 
                         onClick={() => handleSelectToken(token)}
-                        className={`w-full flex items-center justify-between p-4 hover:bg-[#1e293b]/80 rounded-2xl transition-all text-left mx-auto group ${token.isSpam ? 'opacity-50 hover:opacity-100 grayscale hover:grayscale-0' : ''}`}
+                        className={`w-full flex items-center justify-between p-4 hover:bg-[var(--bg-input)]/80 rounded-2xl transition-all text-left mx-auto group ${token.isSpam ? 'opacity-50 hover:opacity-100 grayscale hover:grayscale-0' : ''}`}
                       >
                         <div className="flex items-center gap-4">
                           <div className={`relative w-11 h-11 rounded-full flex items-center justify-center font-bold text-white shadow-inner group-hover:scale-110 transition-transform ${token.isNative ? 'bg-blue-600' : 'bg-slate-700 border border-slate-600'}`}>
                             {token.symbol[0] !== 'U' ? token.symbol[0] : '🪙'}
                             
-                            <div className="absolute -bottom-1 -right-1 text-[12px] bg-[#0f172a] rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10" title={MOCK_NETWORKS.find(n => n.id === String(token.chain_id))?.name}>
+                            <div className="absolute -bottom-1 -right-1 text-[12px] bg-[var(--bg-card)] rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10" title={MOCK_NETWORKS.find(n => n.id === String(token.chain_id))?.name}>
                               {MOCK_NETWORKS.find(n => n.id === String(token.chain_id))?.icon || '🌐'}
                             </div>
 
                             {token.isCustom && (
-                              <div className="absolute -top-1 -right-1 text-[10px] bg-[#0f172a] rounded-full p-0.5 text-blue-400">
+                              <div className="absolute -top-1 -right-1 text-[10px] bg-[var(--bg-card)] rounded-full p-0.5 text-blue-400">
                                 <Globe size={10} />
                               </div>
                             )}
                           </div>
                           <div>
-                            <div className="font-bold text-slate-100 flex items-center gap-2">
+                            <div className="font-bold text-[var(--text-primary)] flex items-center gap-2">
                               {token.name}
                             </div>
                             <div className="text-xs font-medium text-slate-400 pr-2">
@@ -1021,7 +1049,7 @@ function App() {
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className="font-bold text-slate-100">
+                          <div className="font-bold text-[var(--text-primary)]">
                             {token.isCustom ? 'Из поиска' : (token.usd_value > 0 ? `$${token.usd_value.toFixed(2)}` : '< $0.01')}
                           </div>
                           <div className="text-sm font-medium text-slate-500">
@@ -1045,11 +1073,11 @@ function App() {
       {/* === МОДАЛЬНОЕ ОКНО ПОДТВЕРЖДЕНИЯ ОБМЕНА === */}
       {isConfirmModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[60] p-4">
-          <div className="bg-[#0f172a] w-full max-w-[420px] rounded-[32px] border border-[#1e293b] flex flex-col relative shadow-2xl p-5 animate-in zoom-in-95 duration-200">
+          <div className="bg-[var(--bg-card)] w-full max-w-[420px] rounded-[32px] border border-[var(--border)] flex flex-col relative shadow-2xl p-5 animate-in zoom-in-95 duration-200">
             
             <div className="flex justify-between items-center mb-6 px-1">
-              <h2 className="text-lg font-bold text-white">Вы выполняете своп</h2>
-              <button onClick={() => !isSwapping && setIsConfirmModalOpen(false)} className="text-slate-400 hover:text-white transition bg-[#1e293b] p-1.5 rounded-xl">
+              <h2 className="text-lg font-bold text-[var(--text-primary)]">Вы выполняете своп</h2>
+              <button onClick={() => !isSwapping && setIsConfirmModalOpen(false)} className="text-slate-400 hover:text-white transition bg-[var(--bg-input)] p-1.5 rounded-xl">
                 <X size={20} />
               </button>
             </div>
@@ -1068,39 +1096,39 @@ function App() {
             <div className="space-y-4 mb-6 px-1">
               <div className="flex justify-between items-center">
                 <div>
-                  <div className="text-3xl font-bold text-white tracking-tight">{debouncedPayAmount} {payToken?.symbol}</div>
-                  <div className="text-sm text-slate-500 mt-1 font-medium">{payUsdDisplay}</div>
+                  <div className="text-3xl font-bold text-[var(--text-primary)] tracking-tight">{debouncedPayAmount} {payToken?.symbol}</div>
+                  <div className="text-sm text-[var(--text-muted)] mt-1 font-medium">{payUsdDisplay}</div>
                 </div>
                 <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center font-bold text-white text-sm shadow-inner relative">
                   {payToken?.symbol.charAt(0)}
-                  <div className="absolute -bottom-1 -right-1 text-[12px] bg-[#0f172a] rounded-full">🌐</div>
+                  <div className="absolute -bottom-1 -right-1 text-[12px] bg-[var(--bg-card)] rounded-full">🌐</div>
                 </div>
               </div>
 
               <div className="relative flex items-center py-2">
-                <div className="absolute left-0 w-full h-[1px] bg-[#1e293b]"></div>
-                <div className="w-8 h-8 bg-[#0f172a] border border-[#1e293b] rounded-full flex items-center justify-center relative z-10 text-slate-400">
+                <div className="absolute left-0 w-full h-[1px] bg-[var(--bg-input)]"></div>
+                <div className="w-8 h-8 bg-[var(--bg-card)] border border-[var(--border)] rounded-full flex items-center justify-center relative z-10 text-slate-400">
                   <ArrowDown size={16} />
                 </div>
               </div>
 
               <div className="flex justify-between items-center">
                 <div>
-                  <div className="text-3xl font-bold text-white tracking-tight">{formatNumber(receiveAmount, 5)} {receiveToken?.symbol}</div>
-                  <div className="text-sm text-slate-500 mt-1 font-medium">{receiveUsdDisplay}</div>
+                  <div className="text-3xl font-bold text-[var(--text-primary)] tracking-tight">{formatNumber(receiveAmount, 5)} {receiveToken?.symbol}</div>
+                  <div className="text-sm text-[var(--text-muted)] mt-1 font-medium">{receiveUsdDisplay}</div>
                 </div>
                 <div className="w-10 h-10 bg-slate-700 border border-slate-600 rounded-full flex items-center justify-center font-bold text-white text-sm shadow-inner relative">
                   {receiveToken?.symbol.charAt(0)}
-                  <div className="absolute -bottom-1 -right-1 text-[12px] bg-[#0f172a] rounded-full">🌐</div>
+                  <div className="absolute -bottom-1 -right-1 text-[12px] bg-[var(--bg-card)] rounded-full">🌐</div>
                 </div>
               </div>
             </div>
 
             {/* Сводка транзакции (Аккордеон) */}
-            <div className="border-t border-[#1e293b] pt-4 mb-6 px-1">
+            <div className="border-t border-[var(--border)] pt-4 mb-6 px-1">
               <button 
                 onClick={() => setShowDetails(!showDetails)}
-                className="flex items-center justify-center gap-2 text-sm text-slate-400 hover:text-slate-300 font-medium w-full mb-4 transition-colors"
+                className="flex items-center justify-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] font-medium w-full mb-4 transition-colors"
               >
                 {showDetails ? 'Показать меньше' : 'Показать больше'}
                 {showDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -1109,20 +1137,20 @@ function App() {
               {showDetails && (
                 <div className="space-y-3 text-sm animate-in fade-in slide-in-from-top-2">
                   <div className="flex justify-between items-start">
-                    <span className="text-slate-500">Курс</span>
+                    <span className="text-[var(--text-muted)]">Курс</span>
                     <div className="text-right">
-                       <div className="text-white font-medium">1 {payToken?.symbol} = {formatNumber(receiveAmount / Number(debouncedPayAmount), 6)} {receiveToken?.symbol}</div>
-                       <div className="text-slate-500 text-xs">({getTokenPrice(payToken) > 0 ? `$${getTokenPrice(payToken).toFixed(2)}` : '$-'})</div>
+                       <div className="text-[var(--text-primary)] font-medium">1 {payToken?.symbol} = {formatNumber(receiveAmount / Number(debouncedPayAmount), 6)} {receiveToken?.symbol}</div>
+                       <div className="text-[var(--text-muted)] text-xs">({getTokenPrice(payToken) > 0 ? `$${getTokenPrice(payToken).toFixed(2)}` : '$-'})</div>
                     </div>
                   </div>
                   
                   <div className="flex justify-between items-center">
-                    <span className="text-slate-500 flex items-center gap-1">Макс. проскальзывание <Info size={12} className="opacity-50"/></span>
-                    <span className="text-white font-medium"><span className="bg-[#1e293b] text-slate-400 px-1.5 py-0.5 rounded text-xs mr-1 font-normal">Авто</span> 10 %</span>
+                    <span className="text-[var(--text-muted)] flex items-center gap-1">Макс. проскальзывание <Info size={12} className="opacity-50"/></span>
+                    <span className="text-[var(--text-primary)] font-medium"><span className="bg-[var(--bg-input)] text-[var(--text-muted)] px-1.5 py-0.5 rounded text-xs mr-1 font-normal">Авто</span> 10 %</span>
                   </div>
                   
                   <div className="flex justify-between items-start">
-                    <span className="text-slate-500 flex items-center gap-1 mt-0.5">Маршрут <Info size={12} className="opacity-50"/></span>
+                    <span className="text-[var(--text-muted)] flex items-center gap-1 mt-0.5">Маршрут <Info size={12} className="opacity-50"/></span>
                     <span className="text-blue-400 font-medium text-xs flex flex-wrap justify-end gap-1 max-w-[60%] text-right">
                       {quoteData?.route_used && quoteData.route_used.length > 0 ? quoteData.route_used.map((r, i) => (
                         <span key={i} className="bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">{r}</span>
@@ -1151,10 +1179,10 @@ function App() {
       {/* === НОВОЕ МОДАЛЬНОЕ ОКНО ИСТОРИИ ОБМЕНОВ === */}
       {isHistoryModalOpen && (
          <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[70] p-4">
-            <div className="bg-[#0f172a] w-full max-w-[440px] max-h-[80vh] rounded-[32px] border border-[#1e293b] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-                <div className="p-6 pb-4 flex justify-between items-center border-b border-[#1e293b]">
-                   <h2 className="text-xl font-bold flex items-center gap-2"><Clock className="text-blue-500"/> История обменов</h2>
-                   <button onClick={() => setIsHistoryModalOpen(false)} className="bg-[#1e293b] p-2 rounded-xl text-slate-400 hover:text-white transition-colors">
+            <div className="bg-[var(--bg-card)] w-full max-w-[440px] max-h-[80vh] rounded-[32px] border border-[var(--border)] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                <div className="p-6 pb-4 flex justify-between items-center border-b border-[var(--border)]">
+                   <h2 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2"><Clock className="text-blue-500"/> История обменов</h2>
+                   <button onClick={() => setIsHistoryModalOpen(false)} className="bg-[var(--bg-input)] p-2 rounded-xl text-slate-400 hover:text-white transition-colors">
                      <X size={20}/>
                    </button>
                 </div>
@@ -1170,18 +1198,18 @@ function App() {
                             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 px-2">{date}</h3>
                             <div className="space-y-2">
                                {txs.map(tx => (
-                                  <button key={tx.id} onClick={() => setSelectedHistoryTx(tx)} className="w-full bg-[#05070a] border border-[#1e293b] hover:border-blue-500/50 p-3 rounded-xl flex justify-between items-center transition-all group">
+                                  <button key={tx.id} onClick={() => setSelectedHistoryTx(tx)} className="w-full bg-[var(--bg-item)] border border-[var(--border)] hover:border-blue-500/50 p-3 rounded-xl flex justify-between items-center transition-all group">
                                      <div className="flex items-center gap-4">
-                                        <div className="text-slate-500 text-xs font-mono bg-[#1e293b] px-2 py-1 rounded-md">
+                                        <div className="text-slate-500 text-xs font-mono bg-[var(--bg-input)] px-2 py-1 rounded-md">
                                            {new Date(tx.timestamp).toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'})}
                                         </div>
                                         <div className="font-medium text-sm flex items-center gap-2">
-                                           <span className="text-white">{tx.payAmount} {tx.paySymbol}</span>
-                                           <ArrowRightLeft size={12} className="text-slate-600" />
+                                           <span className="text-[var(--text-primary)]">{tx.payAmount} {tx.paySymbol}</span>
+                                           <ArrowRightLeft size={12} className="text-[var(--text-muted)]" />
                                            <span className="text-emerald-400">{formatNumber(tx.receiveAmount, 4)} {tx.receiveSymbol}</span>
                                         </div>
                                      </div>
-                                     <ChevronRight size={16} className="text-slate-600 group-hover:text-blue-400 transition-colors" />
+                                     <ChevronRight size={16} className="text-[var(--text-muted)] group-hover:text-blue-400 transition-colors" />
                                   </button>
                                ))}
                             </div>
@@ -1196,38 +1224,38 @@ function App() {
       {/* === ДЕТАЛИ ИСТОРИЧЕСКОЙ ТРАНЗАКЦИИ === */}
       {selectedHistoryTx && (
          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[80] p-4">
-            <div className="bg-[#0f172a] w-full max-w-[380px] rounded-[24px] border border-[#1e293b] flex flex-col shadow-2xl p-6 animate-in zoom-in-95 duration-200 relative">
+            <div className="bg-[var(--bg-card)] w-full max-w-[380px] rounded-[24px] border border-[var(--border)] flex flex-col shadow-2xl p-6 animate-in zoom-in-95 duration-200 relative">
                <div className="flex justify-between items-center mb-6">
-                  <h3 className="font-bold text-lg">Детали обмена</h3>
-                  <button onClick={() => setSelectedHistoryTx(null)} className="text-slate-400 hover:text-white bg-[#1e293b] p-1.5 rounded-xl"><X size={20}/></button>
+                  <h3 className="font-bold text-lg text-[var(--text-primary)]">Детали обмена</h3>
+                  <button onClick={() => setSelectedHistoryTx(null)} className="text-slate-400 hover:text-white bg-[var(--bg-input)] p-1.5 rounded-xl"><X size={20}/></button>
                </div>
                
                <div className="flex flex-col items-center justify-center mb-6">
                   <div className="w-12 h-12 bg-emerald-500/10 rounded-full flex items-center justify-center mb-3">
                      <CheckCircle2 size={24} className="text-emerald-500" />
                   </div>
-                  <div className="text-xs text-slate-500 font-medium bg-[#1e293b] px-3 py-1 rounded-full">
+                  <div className="text-xs text-slate-500 font-medium bg-[var(--bg-input)] px-3 py-1 rounded-full">
                      {new Date(selectedHistoryTx.timestamp).toLocaleString('ru-RU')}
                   </div>
                </div>
 
-               <div className="bg-[#05070a] border border-[#1e293b] rounded-xl p-4 space-y-4 mb-6">
+               <div className="bg-[var(--bg-item)] border border-[var(--border)] rounded-xl p-4 space-y-4 mb-6">
                   <div className="flex justify-between items-center">
                      <span className="text-slate-500 text-sm">Продано</span>
-                     <span className="font-bold text-white">{selectedHistoryTx.payAmount} {selectedHistoryTx.paySymbol}</span>
+                     <span className="font-bold text-[var(--text-primary)]">{selectedHistoryTx.payAmount} {selectedHistoryTx.paySymbol}</span>
                   </div>
                   <div className="flex justify-between items-center">
                      <span className="text-slate-500 text-sm">Получено</span>
                      <span className="font-bold text-emerald-400">{formatNumber(selectedHistoryTx.receiveAmount, 6)} {selectedHistoryTx.receiveSymbol}</span>
                   </div>
                   {selectedHistoryTx.priceImpact > 0 && (
-                     <div className="flex justify-between items-center pt-3 border-t border-[#1e293b]">
+                     <div className="flex justify-between items-center pt-3 border-t border-[var(--border)]">
                         <span className="text-slate-500 text-sm">Проскальзывание</span>
                         <span className="text-rose-400 font-medium text-sm">{selectedHistoryTx.priceImpact.toFixed(2)}%</span>
                      </div>
                   )}
-                  <div className="flex justify-between items-start pt-3 border-t border-[#1e293b]">
-                     <span className="text-slate-500 text-sm mt-0.5">Маршрут</span>
+                  <div className="flex justify-between items-start pt-3 border-t border-[var(--border)]">
+                     <span className="text-[var(--text-muted)] text-sm mt-0.5">Маршрут</span>
                      <div className="flex flex-wrap justify-end gap-1 max-w-[60%]">
                         {selectedHistoryTx.route.map((r, i) => (
                            <span key={i} className="text-[10px] font-medium bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/20">{r}</span>
@@ -1237,7 +1265,7 @@ function App() {
                </div>
 
                {selectedHistoryTx.hash && (
-                 <a href={`https://bscscan.com/tx/${selectedHistoryTx.hash}`} target="_blank" rel="noreferrer" className="w-full py-3 bg-[#1e293b] hover:bg-[#334155] rounded-xl flex items-center justify-center gap-2 text-sm font-bold text-white transition-colors">
+                 <a href={`https://bscscan.com/tx/${selectedHistoryTx.hash}`} target="_blank" rel="noreferrer" className="w-full py-3 bg-[var(--bg-input)] hover:bg-[var(--border)] rounded-xl flex items-center justify-center gap-2 text-sm font-bold text-white transition-colors">
                     Проверить в Explorer <ExternalLink size={16} />
                  </a>
                )}

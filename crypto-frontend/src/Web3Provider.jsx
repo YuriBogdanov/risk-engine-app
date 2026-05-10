@@ -19,11 +19,11 @@ const config = createConfig(
 
 const queryClient = new QueryClient();
 
-export const Web3Provider = ({ children }) => {
+export const Web3Provider = ({ children, mode = 'dark' }) => {
   return (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
-        <ConnectKitProvider mode="dark">
+        <ConnectKitProvider mode={mode}>
           {children}
         </ConnectKitProvider>
       </QueryClientProvider>

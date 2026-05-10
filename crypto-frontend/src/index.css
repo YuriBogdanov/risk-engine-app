@@ -1,3 +1,34 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --bg-base:      #f0f4f8;
+  --bg-card:      #ffffff;
+  --bg-input:     #e8edf2;
+  --bg-item:      #f5f8fa;
+  --border:       #d1dae3;
+  --text-primary: #0f172a;
+  --text-muted:   #64748b;
+  --scrollbar:    #c0cad4;
+}
+
+.dark {
+  --bg-base:      #05070a;
+  --bg-card:      #0f172a;
+  --bg-input:     #1e293b;
+  --bg-item:      #05070a;
+  --border:       #1e293b;
+  --text-primary: #ffffff;
+  --text-muted:   #94a3b8;
+  --scrollbar:    #1e293b;
+}
+
+* {
+  transition: background-color 0.25s ease, border-color 0.25s ease, color 0.15s ease;
+}
+
+body {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+}
