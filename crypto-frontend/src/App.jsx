@@ -1009,6 +1009,9 @@ function App() {
         to: swapData.tx.to,
         data: swapData.tx.data,
         value: swapData.tx.value ? BigInt(swapData.tx.value) : 0n,
+        // Передаём gas от 1inch с буфером 1.3× чтобы MetaMask
+        // не блокировал транзакцию из-за своей неверной оценки газа
+        gas: swapData.tx.gas ? BigInt(Math.ceil(Number(swapData.tx.gas) * 1.3)) : undefined,
       });
 
       const newHistoryTx = {

@@ -41,7 +41,9 @@ def _parse_quote_data(raw_data):
 def get_approve_transaction(chain_id, token_address, amount_wei):
     url = f"https://api.1inch.dev/swap/v6.1/{chain_id}/approve/transaction"
     headers = {"Authorization": f"Bearer {ONEINCH_API_KEY}", "Accept": "application/json"}
-    params = {"tokenAddress": token_address, "amount": str(amount_wei)}
+    # Без amount → 1inch апрувит uint256_max (стандартная практика DEX).
+    # Точный amount вызывает revert если router оперирует чуть другой суммой (fee-on-transfer).
+    params = {"tokenAddress": token_address}
 
     try:
         response = requests.get(url, headers=headers, params=params, timeout=10)
@@ -61,7 +63,8 @@ def get_swap_transaction(chain_id, from_token, to_token, amount_wei, user_wallet
         "amount": str(amount_wei),
         "from": user_wallet,
         "slippage": slippage,
-        "disableEstimate": "true"
+        "disableEstimate": "true",
+        "allowPartialFill": "true",   # помогает с fee-on-transfer токенами
     }
 
     try:
