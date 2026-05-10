@@ -56,16 +56,12 @@ def get_cmc_market_data(token_address, symbol):
         token_stats = data['data'][str(target_id)]
         quote_usd = token_stats.get('quote', {}).get('USD', {})
 
-        # ВАЖНО: У CMC нет показателя DEX-ликвидности, у них есть Market Cap.
-        # Берем реальный market_cap (или FDV, если капы нет).
-        market_cap = quote_usd.get('market_cap', 0)
-        if not market_cap:
-            market_cap = quote_usd.get('fully_diluted_market_cap', 0)
-
+        # CMC does not expose DEX pool liquidity — only volume and price change.
+        # liquidity_usd is intentionally 0; the orchestrator uses DexScreener for liquidity.
         return {
             "volume_24h": quote_usd.get('volume_24h', 0),
             "price_change_24h": quote_usd.get('percent_change_24h', 0),
-            "liquidity_usd": market_cap,  # Передаем капу как меру ценности
+            "liquidity_usd": 0,
             "source": "CoinMarketCap"
         }
 

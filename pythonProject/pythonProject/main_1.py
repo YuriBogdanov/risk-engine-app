@@ -52,21 +52,23 @@ def run_diploma_analyzer(chain_id, token_address, amount_to_spend_usd=10):
     creator_address = goplus_raw.get('creator_address')
     creator_transfers = get_wallet_token_transfers(chain_id, creator_address, token_address)
 
-    # --- УМНЫЙ ФОЛБЭК: CMC -> DexScreener ---
-    token_symbol = goplus_raw.get('token_symbol', 'Unknown')  # Получаем символ
+    # DexScreener is the primary source for on-chain liquidity.
+    # CMC supplements with more accurate volume/price_change when available.
+    token_symbol = goplus_raw.get('token_symbol', 'Unknown')
 
-    print(f"Запрос данных CMC для {token_symbol}...")
-    # Передаем и адрес, и символ
-    market_raw = get_cmc_market_data(token_address, token_symbol)
-
+    print("Запрос ликвидности из DexScreener...")
+    market_raw = get_market_dynamics(token_address)
     if market_raw:
-        print(f"Успех! Данные {token_symbol} получены из CoinMarketCap.")
-        market_raw["source"] = "CoinMarketCap"
-    else:
-        print("Токен не найден на CMC. Переключаюсь на DexScreener (On-Chain данные)...")
-        market_raw = get_market_dynamics(token_address)
-        if market_raw:
-            market_raw["source"] = "DexScreener"
+        market_raw["source"] = "DexScreener"
+
+    print(f"Запрос данных CMC для {token_symbol} (volume/price supplement)...")
+    cmc_data = get_cmc_market_data(token_address, token_symbol)
+    if cmc_data and market_raw:
+        if cmc_data.get("volume_24h", 0) > 0:
+            market_raw["volume_24h"] = cmc_data["volume_24h"]
+            print(f"CMC volume applied: {cmc_data['volume_24h']}")
+    elif cmc_data and not market_raw:
+        market_raw = cmc_data
 
     # 1.2 Отработка кастомных модулей On-Chain аналитики
     whales_report = calculate_whale_manipulation_risk(goplus_raw, moralis_holders)
