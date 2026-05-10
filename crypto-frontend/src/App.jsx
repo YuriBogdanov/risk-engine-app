@@ -47,6 +47,10 @@ const scrollbarStyles = `
   .learn-prose th, .learn-prose td { border: 1px solid var(--border); padding: 0.6rem 0.8rem; text-align: left; }
   .learn-prose th { background: var(--bg-input); font-weight: 700; color: var(--text-primary); }
   .learn-prose td { color: var(--text-primary); }
+
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
 `;
 
 // ====================================================
@@ -776,6 +780,20 @@ function App() {
   }, [payAmount]);
 
   useEffect(() => {
+    if (!backendData?.assets) return;
+    const syncToken = (token) => {
+      if (!token) return token;
+      const match = backendData.assets.find(t =>
+        t.address?.toLowerCase() === token.address?.toLowerCase()
+      );
+      if (match) return { ...token, balance: match.balance, usd_value: match.usd_value, isCustom: false };
+      return token;
+    };
+    setPayToken(prev => syncToken(prev));
+    setReceiveToken(prev => syncToken(prev));
+  }, [backendData]);
+
+  useEffect(() => {
     let intervalId;
 
     const fetchQuote = async (isBackgroundRefresh = false) => {
@@ -958,6 +976,7 @@ function App() {
       addNotification('Обмен успешно выполнен!', 'success', swapHash);
       setPayAmount('');
       setIsConfirmModalOpen(false);
+      setTimeout(() => fetchAssets(selectedNetwork.id), 2500);
 
     } catch (error) {
       console.error("Swap Error:", error);
@@ -1502,6 +1521,19 @@ function App() {
                   <span>{payUsdDisplay}</span>
                   <span>Баланс: {payToken ? (payToken.isCustom ? '0.00' : payToken.balance) : '0.00'}</span>
                 </div>
+                {payToken && Number(payToken.balance) > 0 && (
+                  <div className="flex gap-1.5 mt-2 px-1">
+                    {[25, 50, 75, 100].map(pct => (
+                      <button
+                        key={pct}
+                        onClick={() => setPayAmount((Number(payToken.balance) * pct / 100).toFixed(6))}
+                        className="flex-1 text-xs font-semibold py-1 rounded-lg bg-[var(--bg-input)] hover:bg-blue-500/20 hover:text-blue-400 text-[var(--text-muted)] border border-[var(--border)] transition-colors"
+                      >
+                        {pct === 100 ? 'MAX' : `${pct}%`}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 <div
                   onClick={handleSwapSides}
