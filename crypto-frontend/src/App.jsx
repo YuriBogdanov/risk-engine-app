@@ -430,7 +430,7 @@ function App() {
   const publicClient = usePublicClient();
 
   // === Live-баланс с RPC (без кэша/индексации Moralis) ===
-  const { data: payLiveBalance, refetch: refetchPayLive } = useBalance({
+  const { data: payLiveBalance, status: payLiveStatus, refetch: refetchPayLive } = useBalance({
     address: address,
     token: (payToken && !payToken.isNative) ? payToken.address : undefined,
     chainId: payToken ? Number(payToken.chain_id) : undefined,
@@ -440,7 +440,7 @@ function App() {
     },
   });
 
-  const { data: receiveLiveBalance, refetch: refetchReceiveLive } = useBalance({
+  const { data: receiveLiveBalance, status: receiveLiveStatus, refetch: refetchReceiveLive } = useBalance({
     address: address,
     token: (receiveToken && !receiveToken.isNative) ? receiveToken.address : undefined,
     chainId: receiveToken ? Number(receiveToken.chain_id) : undefined,
@@ -450,16 +450,19 @@ function App() {
     },
   });
 
-  // Если live-баланс загружен (не null) — доверяем ему всегда, включая 0.
-  // 0 после продажи — это правильное значение, не «ошибка загрузки».
-  // Если live ещё не пришёл (null) — используем известный бэкенд-баланс как fallback.
-  const payLiveNum = payLiveBalance != null ? Number(payLiveBalance.formatted) : null;
   const payBackendNum = Number(payToken?.balance || 0);
-  const payBalanceNum = payLiveNum !== null ? payLiveNum : payBackendNum;
-
-  const receiveLiveNum = receiveLiveBalance != null ? Number(receiveLiveBalance.formatted) : null;
   const receiveBackendNum = Number(receiveToken?.balance || 0);
-  const receiveBalanceNum = receiveLiveNum !== null ? receiveLiveNum : receiveBackendNum;
+
+  // Используем live-баланс только когда запрос УСПЕШНО завершён (status==='success').
+  // Пока загружается или при ошибке — показываем backend-баланс.
+  // После свопа status остаётся 'success' с новым значением 0 — это корректно.
+  const payBalanceNum = payLiveStatus === 'success' && payLiveBalance != null
+    ? Number(payLiveBalance.formatted)
+    : payBackendNum;
+
+  const receiveBalanceNum = receiveLiveStatus === 'success' && receiveLiveBalance != null
+    ? Number(receiveLiveBalance.formatted)
+    : receiveBackendNum;
 
   const formatBalanceDisplay = (n) => {
     if (!n || n === 0) return '0.00';
