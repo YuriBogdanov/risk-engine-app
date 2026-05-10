@@ -450,13 +450,15 @@ function App() {
     },
   });
 
-  const payBalanceNum = payLiveBalance
-    ? Number(payLiveBalance.formatted)
-    : Number(payToken?.balance || 0);
+  // Приоритет: live-баланс с RPC если > 0, иначе бэкенд-баланс.
+  // Если RPC вернул 0 ошибочно (rate-limit, задержка) — показываем известный баланс.
+  const payLiveNum = payLiveBalance != null ? Number(payLiveBalance.formatted) : null;
+  const payBackendNum = Number(payToken?.balance || 0);
+  const payBalanceNum = (payLiveNum != null && payLiveNum > 0) ? payLiveNum : payBackendNum;
 
-  const receiveBalanceNum = receiveLiveBalance
-    ? Number(receiveLiveBalance.formatted)
-    : Number(receiveToken?.balance || 0);
+  const receiveLiveNum = receiveLiveBalance != null ? Number(receiveLiveBalance.formatted) : null;
+  const receiveBackendNum = Number(receiveToken?.balance || 0);
+  const receiveBalanceNum = (receiveLiveNum != null && receiveLiveNum > 0) ? receiveLiveNum : receiveBackendNum;
 
   const formatBalanceDisplay = (n) => {
     if (!n || n === 0) return '0.00';
@@ -588,11 +590,12 @@ function App() {
     }
   }, [backendData, payToken, receiveToken]);
 
-  const fetchAssets = async (networkId = selectedNetwork.id) => {
+  const fetchAssets = async (networkId = selectedNetwork.id, force = false) => {
     if (!address) return;
     setIsLoadingAssets(true);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/assets/${networkId}/${address}`);
+      const url = `http://127.0.0.1:8000/api/assets/${networkId}/${address}${force ? '?force=true' : ''}`;
+      const response = await fetch(url);
       const data = await response.json();
       setBackendData(data);
     } catch (error) {
@@ -1046,8 +1049,28 @@ function App() {
       // Live-балансы читаются с RPC — обновляем сразу
       refetchPayLive?.();
       refetchReceiveLive?.();
-      // Бэкенд-портфель с задержкой (Moralis индексирует медленно)
-      setTimeout(() => fetchAssets(selectedNetwork.id), 3000);
+
+      // Вставляем полученный токен в список активов немедленно (Moralis индексирует медленно).
+      // Пользователь сразу видит его в "Your assets" и может выбрать для обратного свопа.
+      if (receiveToken && quoteData?.expected_output_human) {
+        const injectedToken = {
+          ...receiveToken,
+          balance: String(Number(quoteData.expected_output_human).toFixed(6)),
+          usd_value: receiveUsd > 0 ? receiveUsd : (receiveToken.usd_value || 0),
+          isCustom: false,
+        };
+        setBackendData(prev => {
+          if (!prev?.assets) return prev;
+          const filtered = prev.assets.filter(t =>
+            t.address?.toLowerCase() !== receiveToken.address?.toLowerCase()
+          );
+          return { ...prev, assets: [...filtered, injectedToken] };
+        });
+      }
+
+      // Полный рефреш бэкенда с несколькими попытками (Moralis медленный)
+      setTimeout(() => fetchAssets(selectedNetwork.id, true), 5000);
+      setTimeout(() => fetchAssets(selectedNetwork.id, true), 15000);
 
     } catch (error) {
       console.error("Swap Error:", error);

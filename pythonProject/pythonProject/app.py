@@ -25,10 +25,10 @@ PORTFOLIO_CACHE_TTL = 30
 
 
 @app.get("/api/assets/{chain_id}/{wallet_address}")
-def fetch_assets(chain_id: str, wallet_address: str):
+def fetch_assets(chain_id: str, wallet_address: str, force: bool = False):
     cache_key = f"{chain_id}_{wallet_address.lower()}"
     now = time.time()
-    if cache_key in PORTFOLIO_CACHE:
+    if not force and cache_key in PORTFOLIO_CACHE:
         cached = PORTFOLIO_CACHE[cache_key]
         if now - cached["time"] < PORTFOLIO_CACHE_TTL:
             print(f"⚡ Portfolio from cache for: {wallet_address}")
