@@ -453,16 +453,15 @@ function App() {
   const payBackendNum = Number(payToken?.balance || 0);
   const receiveBackendNum = Number(receiveToken?.balance || 0);
 
-  // Используем live-баланс только когда запрос УСПЕШНО завершён (status==='success').
-  // Пока загружается или при ошибке — показываем backend-баланс.
-  // После свопа status остаётся 'success' с новым значением 0 — это корректно.
-  const payBalanceNum = payLiveStatus === 'success' && payLiveBalance != null
-    ? Number(payLiveBalance.formatted)
-    : payBackendNum;
+  // Предпочитаем backend (Moralis) — он надёжен на любых сетях, включая локальные форки.
+  // Live-баланс с RPC используется только как дополнение, когда backend не знает токен
+  // (например, пользователь выбрал кастомный токен через поиск DexScreener).
+  // После свопа payToken.balance выставляется в '0' явно — баланс обнуляется сразу.
+  const payLiveNum = payLiveBalance ? Number(payLiveBalance.formatted) : 0;
+  const receiveLiveNum = receiveLiveBalance ? Number(receiveLiveBalance.formatted) : 0;
 
-  const receiveBalanceNum = receiveLiveStatus === 'success' && receiveLiveBalance != null
-    ? Number(receiveLiveBalance.formatted)
-    : receiveBackendNum;
+  const payBalanceNum = payBackendNum > 0 ? payBackendNum : payLiveNum;
+  const receiveBalanceNum = receiveBackendNum > 0 ? receiveBackendNum : receiveLiveNum;
 
   const formatBalanceDisplay = (n) => {
     if (!n || n === 0) return '0.00';
@@ -501,6 +500,13 @@ function App() {
       return [];
     }
   });
+
+  // Локальные оверрайды для балансов токенов после свопа.
+  // { "0xaddr_56": { balance: "0", usd_value: 0, until: timestamp } }
+  // Используется чтобы перебить stale данные Moralis (индексация 30-60 сек после свопа).
+  const [balanceOverrides, setBalanceOverrides] = useState({});
+
+  const overrideKey = (address, chainId) => `${String(address || '').toLowerCase()}_${chainId}`;
 
   // === ВКЛАДКА АНАЛИЗАТОРА ===
   const [analyzerQuery, setAnalyzerQuery] = useState('');
@@ -599,6 +605,26 @@ function App() {
     }
   }, [backendData, payToken, receiveToken]);
 
+  const applyOverrides = (data) => {
+    if (!data?.assets) return data;
+    const now = Date.now();
+    const activeOverrides = Object.entries(balanceOverrides).filter(([_, v]) => v.until > now);
+    if (activeOverrides.length === 0) return data;
+    const map = Object.fromEntries(activeOverrides);
+    const assets = data.assets.map(t => {
+      const key = overrideKey(t.address, t.chain_id);
+      if (map[key]) return { ...t, balance: map[key].balance, usd_value: map[key].usd_value };
+      return t;
+    });
+    // Добавим injection-токены, которых нет в ответе Moralis
+    for (const [key, ov] of activeOverrides) {
+      if (!assets.find(t => overrideKey(t.address, t.chain_id) === key) && ov.token) {
+        assets.push({ ...ov.token, balance: ov.balance, usd_value: ov.usd_value });
+      }
+    }
+    return { ...data, assets };
+  };
+
   const fetchAssets = async (networkId = selectedNetwork.id, force = false) => {
     if (!address) return;
     setIsLoadingAssets(true);
@@ -606,7 +632,7 @@ function App() {
       const url = `http://127.0.0.1:8000/api/assets/${networkId}/${address}${force ? '?force=true' : ''}`;
       const response = await fetch(url);
       const data = await response.json();
-      setBackendData(data);
+      setBackendData(applyOverrides(data));
     } catch (error) {
       console.error("Ошибка API активов:", error);
     } finally {
@@ -836,8 +862,15 @@ function App() {
       const match = backendData.assets.find(t =>
         t.address?.toLowerCase() === token.address?.toLowerCase()
       );
-      if (match) return { ...token, balance: match.balance, usd_value: match.usd_value, isCustom: false };
-      return token;
+      if (!match) return token;
+      // Если локально баланс уже выставлен в 0 (после успешного свопа), не перетираем
+      // его данными от Moralis — индексация может отставать на 30-60 сек и показывать
+      // фантомные балансы только что проданных токенов. Обновляем только metadata.
+      const currentBal = Number(token.balance || 0);
+      if (currentBal === 0 && Number(match.balance || 0) > 0) {
+        return { ...token, usd_value: match.usd_value, isCustom: false };
+      }
+      return { ...token, balance: match.balance, usd_value: match.usd_value, isCustom: false };
     };
     setPayToken(prev => syncToken(prev));
     setReceiveToken(prev => syncToken(prev));
@@ -1066,21 +1099,42 @@ function App() {
       refetchPayLive?.();
       refetchReceiveLive?.();
 
-      // Вставляем полученный токен в список активов немедленно (Moralis индексирует медленно).
-      // Пользователь сразу видит его в "Your assets" и может выбрать для обратного свопа.
+      // Регистрируем оверрайды балансов на 120 секунд — переживут force-refetch backend.
+      // Sold-токен → 0; received-токен → balance из котировки.
       if (receiveToken && quoteData?.expected_output_human) {
-        const injectedToken = {
-          ...receiveToken,
-          balance: String(Number(quoteData.expected_output_human).toFixed(6)),
-          usd_value: receiveUsd > 0 ? receiveUsd : (receiveToken.usd_value || 0),
-          isCustom: false,
+        const expireAt = Date.now() + 120_000;
+        const recvBalance = String(Number(quoteData.expected_output_human).toFixed(6));
+        const recvUsd = receiveUsd > 0 ? receiveUsd : (receiveToken.usd_value || 0);
+
+        const newOverrides = {
+          [overrideKey(payToken.address, payToken.chain_id)]: {
+            balance: '0', usd_value: 0, until: expireAt, token: null,
+          },
+          [overrideKey(receiveToken.address, receiveToken.chain_id)]: {
+            balance: recvBalance, usd_value: recvUsd, until: expireAt,
+            token: { ...receiveToken, isCustom: false },
+          },
         };
+        setBalanceOverrides(prev => ({ ...prev, ...newOverrides }));
+
+        // Применяем оверрайды к текущему backendData немедленно — для синхронности UI
         setBackendData(prev => {
           if (!prev?.assets) return prev;
-          const filtered = prev.assets.filter(t =>
-            t.address?.toLowerCase() !== receiveToken.address?.toLowerCase()
-          );
-          return { ...prev, assets: [...filtered, injectedToken] };
+          const recvAddr = receiveToken.address?.toLowerCase();
+          const soldAddr = payToken.address?.toLowerCase();
+          const filtered = prev.assets
+            .filter(t => t.address?.toLowerCase() !== recvAddr)
+            .map(t => t.address?.toLowerCase() === soldAddr
+              ? { ...t, balance: '0', usd_value: 0 }
+              : t
+            );
+          const injectedReceive = {
+            ...receiveToken,
+            balance: recvBalance,
+            usd_value: recvUsd,
+            isCustom: false,
+          };
+          return { ...prev, assets: [...filtered, injectedReceive] };
         });
       }
 
