@@ -38,6 +38,20 @@ def _parse_quote_data(raw_data):
         "estimated_gas": raw_data.get("gas", 0)
     }
 
+def get_token_allowance(chain_id, token_address, wallet_address):
+    """Возвращает текущий аллоуанс токена для 1inch router."""
+    url = f"https://api.1inch.dev/swap/v6.1/{chain_id}/approve/allowance"
+    headers = {"Authorization": f"Bearer {ONEINCH_API_KEY}", "Accept": "application/json"}
+    params = {"tokenAddress": token_address, "walletAddress": wallet_address}
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=10)
+        if response.status_code == 200:
+            return int(response.json().get("allowance", "0"))
+        return 0
+    except Exception:
+        return 0
+
+
 def get_approve_transaction(chain_id, token_address, amount_wei):
     url = f"https://api.1inch.dev/swap/v6.1/{chain_id}/approve/transaction"
     headers = {"Authorization": f"Bearer {ONEINCH_API_KEY}", "Accept": "application/json"}

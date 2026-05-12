@@ -6,7 +6,7 @@ from pydantic import BaseModel
 # ИМПОРТЫ ИЗ ПАПКИ SERVICES
 from main_1 import run_diploma_analyzer
 from services.portfolio_builder import build_user_portfolio
-from providers.aggregator_api import get_approve_transaction, get_swap_transaction, get_best_price_quote
+from providers.aggregator_api import get_approve_transaction, get_swap_transaction, get_best_price_quote, get_token_allowance
 
 app = FastAPI(title="RiskEngine API")
 
@@ -89,10 +89,22 @@ class SwapRequest(BaseModel):
 
 @app.post("/api/build-approve")
 def build_approve(req: SwapRequest):
-    print(f"Запрос Approve для {req.fromToken} на сумму {req.amountWei}")
+    # Нативная монета (ETH/BNB) не требует аппрува
     if req.fromToken.lower() == "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee":
         return {"needsApprove": False}
 
+    # Проверяем текущий аллоуанс — если уже достаточен, аппрув не нужен
+    current_allowance = get_token_allowance(req.chainId, req.fromToken, req.userWallet)
+    try:
+        amount_needed = int(req.amountWei)
+    except (ValueError, TypeError):
+        amount_needed = 0
+
+    if current_allowance >= amount_needed > 0:
+        print(f"✅ Аллоуанс уже выдан: {current_allowance} >= {amount_needed}, аппрув пропущен")
+        return {"needsApprove": False}
+
+    print(f"Запрос Approve для {req.fromToken}: текущий={current_allowance}, нужно={amount_needed}")
     tx_data = get_approve_transaction(req.chainId, req.fromToken, req.amountWei)
     if tx_data:
         return {"needsApprove": True, "tx": tx_data}
