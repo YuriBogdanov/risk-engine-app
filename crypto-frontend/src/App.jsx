@@ -643,6 +643,52 @@ function App() {
     }
   };
 
+  // Обновление цен для токенов без цены через 1inch API (батч до 10 токенов)
+  useEffect(() => {
+    if (!backendData?.assets || backendData.assets.length === 0) return;
+
+    const updateTokenPrices = async () => {
+      // Фильтруем токены: 1) без цены (usd_value = 0) 2) не нативные 3) не спам
+      const noPriceTokens = backendData.assets
+        .filter(t => !t.isNative && t.usd_value === 0 && !t.isSpam)
+        .slice(0, 10); // Берем только первые 10 (лимит API: 100k/месяц)
+
+      if (noPriceTokens.length === 0) return;
+
+      try {
+        const addresses = noPriceTokens.map(t => t.address).join(',');
+        const response = await fetch(
+          `http://127.0.0.1:8000/api/prices/${noPriceTokens[0].chain_id}?tokens=${addresses}`
+        );
+        const prices = await response.json();
+
+        if (prices && typeof prices === 'object' && !prices.error) {
+          // Обновляем backendData с полученными ценами
+          setBackendData(prev => {
+            if (!prev?.assets) return prev;
+            return {
+              ...prev,
+              assets: prev.assets.map(token => {
+                const price = prices[token.address?.toLowerCase()];
+                if (price !== undefined && price > 0) {
+                  // Вычисляем usd_value = balance × price
+                  const balance = Number(token.balance || 0);
+                  const usdValue = balance * price;
+                  return { ...token, usd_value: usdValue, price_per_token: price };
+                }
+                return token;
+              }),
+            };
+          });
+        }
+      } catch (error) {
+        console.warn("Ошибка получения цен 1inch:", error);
+      }
+    };
+
+    updateTokenPrices();
+  }, [backendData?.assets]);
+
   useEffect(() => {
     if (isConnected && address) {
       fetchAssets(selectedNetwork.id);
@@ -1179,11 +1225,27 @@ function App() {
       assets = assets.filter(token => String(token.chain_id) === String(selectedNetwork.id));
     }
 
+    // Фильтруем спам-токены, но только если есть нормальные токены с ценой
+    const hasTokensWithPrice = assets.some(t => t.usd_value > 0 && !t.isSpam);
+    if (hasTokensWithPrice) {
+      assets = assets.filter(t => !t.isSpam);
+    }
+
     const localFiltered = assets.filter(token =>
       token.symbol.toLowerCase().includes(query) ||
       token.name.toLowerCase().includes(query) ||
       (token.address && token.address.toLowerCase().includes(query))
     );
+
+    // Сортируем локальные активы: сначала с ценой (по убыванию USD), потом без цены
+    localFiltered.sort((a, b) => {
+      const aPrice = Number(a.usd_value || 0);
+      const bPrice = Number(b.usd_value || 0);
+      if ((aPrice > 0) !== (bPrice > 0)) {
+        return bPrice > 0 ? 1 : -1; // С ценой выше
+      }
+      return bPrice - aPrice; // По убыванию USD
+    });
 
     const localAddresses = new Set(localFiltered.map(t => t.address?.toLowerCase()));
     const globalFiltered = globalSearchAssets.filter(t => !localAddresses.has(t.address.toLowerCase()));

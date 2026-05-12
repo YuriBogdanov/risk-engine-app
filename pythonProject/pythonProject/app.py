@@ -1,7 +1,9 @@
 import time
+import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from config import ONEINCH_API_KEY
 
 # ИМПОРТЫ ИЗ ПАПКИ SERVICES
 from main_1 import run_diploma_analyzer
@@ -77,6 +79,53 @@ def get_quote(chain_id: str, from_token: str, to_token: str, amount_wei: str):
     if not report:
         return {"error": "Маршрут недоступен или недостаточно ликвидности"}
     return report
+
+
+@app.get("/api/prices/{chain_id}")
+def get_token_prices(chain_id: str, tokens: str):
+    """Получить цены токенов через 1inch Price API (батч).
+
+    Args:
+        chain_id: ID сети (56 для BSC, 1 для Ethereum, 8453 для Base)
+        tokens: Строка с адресами токенов через запятую (макс 30): 0xaddr1,0xaddr2,...
+
+    Returns:
+        Dict с адресом токена как ключ и ценой в USD как значение
+    """
+    token_list = [t.strip() for t in tokens.split(',') if t.strip()]
+
+    if not token_list or len(token_list) > 30:
+        return {"error": "Передайте 1-30 адресов токенов"}
+
+    try:
+        url = f"https://api.1inch.dev/price/v1.1/{chain_id}"
+        headers = {
+            "Authorization": f"Bearer {ONEINCH_API_KEY}",
+            "Accept": "application/json"
+        }
+        params = {
+            "tokens": ",".join(token_list),
+            "currency": "USD"
+        }
+
+        response = requests.get(url, headers=headers, params=params, timeout=10)
+
+        if response.status_code == 200:
+            data = response.json()
+            # 1inch возвращает {addr: price_str, ...}
+            prices = {}
+            for addr, price in data.items():
+                try:
+                    prices[addr.lower()] = float(price)
+                except (ValueError, TypeError):
+                    prices[addr.lower()] = 0
+            return prices
+        else:
+            return {"error": f"1inch API error: {response.status_code}"}
+    except requests.Timeout:
+        return {"error": "1inch API timeout"}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 class SwapRequest(BaseModel):
