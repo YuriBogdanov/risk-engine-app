@@ -396,6 +396,44 @@ const LEARN_SECTIONS = [
 ];
 
 // ====================================================
+// === ИКОНКИ ТОКЕНОВ И СЕТЕЙ (с fallback) ===
+// ====================================================
+
+// Пробует загрузить /icons/tokens/SYMBOL.png — при ошибке показывает первую букву
+function TokenIcon({ symbol }) {
+  const [failed, setFailed] = useState(false);
+  if (!failed && symbol) {
+    return (
+      <img
+        src={`/icons/tokens/${symbol.toUpperCase()}.png`}
+        alt={symbol}
+        className="w-full h-full object-cover"
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+  return <span className="text-sm font-bold leading-none">{symbol?.charAt(0)}</span>;
+}
+
+// Пробует загрузить /icons/networks/CHAINID.png — при ошибке показывает emoji
+function NetworkIcon({ chainId, emoji, size = 24 }) {
+  const [failed, setFailed] = useState(false);
+  if (chainId !== 'all' && !failed) {
+    return (
+      <img
+        src={`/icons/networks/${chainId}.png`}
+        alt={`network-${chainId}`}
+        width={size}
+        height={size}
+        className="rounded-full object-cover"
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+  return <span style={{ fontSize: size * 0.75 }}>{emoji}</span>;
+}
+
+// ====================================================
 // === ОСНОВНОЙ КОМПОНЕНТ ===
 // ====================================================
 
@@ -1533,7 +1571,7 @@ function App() {
                   onClick={() => setIsAnalyzerNetworkOpen(o => !o)}
                   className="bg-[var(--bg-item)] border border-[var(--border)] rounded-2xl px-4 flex items-center gap-2 hover:border-blue-500 transition-colors shrink-0 relative"
                 >
-                  <span className="text-lg">{analyzerNetwork.icon}</span>
+                  <NetworkIcon chainId={analyzerNetwork.id} emoji={analyzerNetwork.icon} size={22} />
                   <span className="hidden sm:block text-sm font-semibold text-[var(--text-primary)]">{analyzerNetwork.name}</span>
                   <ChevronDown size={16} className="text-slate-500" />
                   {isAnalyzerNetworkOpen && (
@@ -1556,7 +1594,7 @@ function App() {
                           }}
                           className={`flex items-center gap-3 p-3 hover:bg-[var(--bg-input)] transition cursor-pointer ${analyzerNetwork.id === net.id ? 'bg-[var(--bg-input)]' : ''}`}
                         >
-                          <span className="text-xl">{net.icon}</span>
+                          <NetworkIcon chainId={net.id} emoji={net.icon} size={26} />
                           <span className="font-bold text-sm text-[var(--text-primary)]">{net.name}</span>
                         </div>
                       ))}
@@ -1692,8 +1730,8 @@ function App() {
                   >
                     {payToken ? (
                       <>
-                        <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-[10px] text-white">
-                          {payToken.symbol.charAt(0)}
+                        <div className="w-6 h-6 bg-blue-600 rounded-full overflow-hidden flex items-center justify-center text-[10px] text-white">
+                          <TokenIcon symbol={payToken.symbol} />
                         </div>
                         <span>{payToken.symbol}</span>
                       </>
@@ -1750,8 +1788,8 @@ function App() {
                   >
                     {receiveToken ? (
                       <>
-                        <div className="w-6 h-6 bg-slate-700 rounded-full flex items-center justify-center text-[10px] text-white">
-                          {displayReceiveSymbol?.charAt(0)}
+                        <div className="w-6 h-6 bg-slate-700 rounded-full overflow-hidden flex items-center justify-center text-[10px] text-white">
+                          <TokenIcon symbol={displayReceiveSymbol} />
                         </div>
                         <span>{displayReceiveSymbol}</span>
                       </>
@@ -1923,7 +1961,7 @@ function App() {
                 onClick={() => setIsNetworkDropdownOpen(!isNetworkDropdownOpen)}
                 className="bg-[var(--bg-item)] border border-[var(--border)] rounded-2xl px-4 flex items-center gap-1 hover:border-blue-500 transition-colors shrink-0 relative"
               >
-                <span className="text-lg">{selectedNetwork.icon}</span>
+                <NetworkIcon chainId={selectedNetwork.id} emoji={selectedNetwork.icon} size={22} />
                 <ChevronDown size={16} className="text-slate-500" />
 
                 {isNetworkDropdownOpen && (
@@ -1934,7 +1972,7 @@ function App() {
                         onClick={(e) => { e.stopPropagation(); handleNetworkChange(net); }}
                         className={`flex items-center gap-3 p-3 hover:bg-[var(--bg-input)] transition text-left cursor-pointer ${selectedNetwork.id === net.id ? 'bg-[var(--bg-input)]' : ''}`}
                       >
-                        <span className="text-xl">{net.icon}</span>
+                        <NetworkIcon chainId={net.id} emoji={net.icon} size={26} />
                         <span className="font-bold text-sm text-[var(--text-primary)]">{net.name}</span>
                       </div>
                     ))}
@@ -1975,14 +2013,16 @@ function App() {
                       >
                         <div className="flex items-center gap-4">
                           <div className={`relative w-11 h-11 rounded-full flex items-center justify-center font-bold text-white shadow-inner group-hover:scale-110 transition-transform ${token.isNative ? 'bg-blue-600' : 'bg-slate-700 border border-slate-600'}`}>
-                            {token.symbol[0] !== 'U' ? token.symbol[0] : '🪙'}
+                            <div className="absolute inset-0 rounded-full overflow-hidden flex items-center justify-center">
+                              <TokenIcon symbol={token.symbol} />
+                            </div>
 
-                            <div className="absolute -bottom-1 -right-1 text-[12px] bg-[var(--bg-card)] rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10" title={MOCK_NETWORKS.find(n => n.id === String(token.chain_id))?.name}>
-                              {MOCK_NETWORKS.find(n => n.id === String(token.chain_id))?.icon || '🌐'}
+                            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-[var(--bg-card)] rounded-full overflow-hidden flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10" title={MOCK_NETWORKS.find(n => n.id === String(token.chain_id))?.name}>
+                              <NetworkIcon chainId={String(token.chain_id)} emoji={MOCK_NETWORKS.find(n => n.id === String(token.chain_id))?.icon || '🌐'} size={16} />
                             </div>
 
                             {token.isCustom && (
-                              <div className="absolute -top-1 -right-1 text-[10px] bg-[var(--bg-card)] rounded-full p-0.5 text-blue-400">
+                              <div className="absolute -top-1 -right-1 text-[10px] bg-[var(--bg-card)] rounded-full p-0.5 text-blue-400 z-10">
                                 <Globe size={10} />
                               </div>
                             )}
