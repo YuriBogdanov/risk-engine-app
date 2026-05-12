@@ -589,6 +589,7 @@ function App() {
   const getButtonText = () => {
     if (!payAmount || Number(payAmount) <= 0) return "Введите сумму";
     if (!receiveToken) return "Выберите токен";
+    if (isInsufficientBalance) return `Недостаточно ${payToken?.symbol}`;
     if (isQuoteLoading) return "Поиск лучшей цены...";
     if (isLiquidityError) return "Превышена ликвидность пула";
     if (!quoteData || quoteData.error) return "Маршрут не найден";
@@ -596,7 +597,9 @@ function App() {
     return "Обмен";
   };
 
-  const isSwapDisabled = !payToken || !receiveToken || !payAmount || Number(payAmount) <= 0 || isSwapping || isQuoteLoading || !quoteData || !!quoteData.error || isLiquidityError;
+  const isInsufficientBalance = !!(isConnected && payToken && payBalanceNum > 0 && Number(payAmount) > payBalanceNum);
+
+  const isSwapDisabled = !payToken || !receiveToken || !payAmount || Number(payAmount) <= 0 || isSwapping || isQuoteLoading || !quoteData || !!quoteData.error || isLiquidityError || isInsufficientBalance;
 
   useEffect(() => {
     if (backendData && backendData.assets && backendData.assets.length > 0 && !payToken && !receiveToken) {
@@ -857,23 +860,24 @@ function App() {
 
   useEffect(() => {
     if (!backendData?.assets) return;
-    const syncToken = (token) => {
+    const syncToken = (token, isPaySide) => {
       if (!token) return token;
       const match = backendData.assets.find(t =>
-        t.address?.toLowerCase() === token.address?.toLowerCase()
+        t.address?.toLowerCase() === token.address?.toLowerCase() &&
+        String(t.chain_id) === String(token.chain_id)
       );
       if (!match) return token;
-      // Если локально баланс уже выставлен в 0 (после успешного свопа), не перетираем
-      // его данными от Moralis — индексация может отставать на 30-60 сек и показывать
-      // фантомные балансы только что проданных токенов. Обновляем только metadata.
+      // Защита только для pay-токена: если мы продали все (локально 0),
+      // не даём устаревшим данным Moralis восстановить фантомный баланс.
+      // Для receive-токена защита не нужна — нам наоборот нужно обновить баланс.
       const currentBal = Number(token.balance || 0);
-      if (currentBal === 0 && Number(match.balance || 0) > 0) {
+      if (isPaySide && currentBal === 0 && Number(match.balance || 0) > 0) {
         return { ...token, usd_value: match.usd_value, isCustom: false };
       }
       return { ...token, balance: match.balance, usd_value: match.usd_value, isCustom: false };
     };
-    setPayToken(prev => syncToken(prev));
-    setReceiveToken(prev => syncToken(prev));
+    setPayToken(prev => syncToken(prev, true));
+    setReceiveToken(prev => syncToken(prev, false));
   }, [backendData]);
 
   useEffect(() => {
@@ -1079,9 +1083,17 @@ function App() {
       setPayAmount('');
       setIsConfirmModalOpen(false);
 
-      // Немедленно обнуляем баланс payToken — мы только что его потратили.
-      // Это убирает стейл-значение до того как RPC подтвердит 0.
-      setPayToken(prev => prev ? { ...prev, balance: '0', usd_value: 0 } : prev);
+      // Вычисляем реальный остаток: текущий баланс минус потраченная сумма.
+      // НЕ обнуляем до 0 — пользователь мог продать лишь часть (1 USDT из 400).
+      const spentAmount = Number(payAmount);
+      const newPayBalance = Math.max(0, payBalanceNum - spentAmount);
+      const newPayUsd = newPayBalance * payTokenPrice;
+
+      setPayToken(prev => prev ? {
+        ...prev,
+        balance: String(newPayBalance.toFixed(6)),
+        usd_value: newPayUsd,
+      } : prev);
 
       // Ждём попадания swap-tx в блок, потом обновляем балансы
       if (publicClient && swapHash) {
@@ -1100,15 +1112,21 @@ function App() {
       refetchReceiveLive?.();
 
       // Регистрируем оверрайды балансов на 120 секунд — переживут force-refetch backend.
-      // Sold-токен → 0; received-токен → balance из котировки.
       if (receiveToken && quoteData?.expected_output_human) {
         const expireAt = Date.now() + 120_000;
-        const recvBalance = String(Number(quoteData.expected_output_human).toFixed(6));
-        const recvUsd = receiveUsd > 0 ? receiveUsd : (receiveToken.usd_value || 0);
+        // Receive: прибавляем полученное к текущему балансу (пользователь мог уже иметь этот токен)
+        const receivedAmount = Number(quoteData.expected_output_human);
+        const newReceiveBalance = receiveBalanceNum + receivedAmount;
+        const newReceiveUsd = newReceiveBalance * getTokenPrice(receiveToken);
+        const recvBalance = String(newReceiveBalance.toFixed(6));
+        const recvUsd = newReceiveUsd > 0 ? newReceiveUsd : (receiveToken.usd_value || 0);
 
         const newOverrides = {
           [overrideKey(payToken.address, payToken.chain_id)]: {
-            balance: '0', usd_value: 0, until: expireAt, token: null,
+            balance: String(newPayBalance.toFixed(6)),
+            usd_value: newPayUsd,
+            until: expireAt,
+            token: null,
           },
           [overrideKey(receiveToken.address, receiveToken.chain_id)]: {
             balance: recvBalance, usd_value: recvUsd, until: expireAt,
@@ -1125,7 +1143,7 @@ function App() {
           const filtered = prev.assets
             .filter(t => t.address?.toLowerCase() !== recvAddr)
             .map(t => t.address?.toLowerCase() === soldAddr
-              ? { ...t, balance: '0', usd_value: 0 }
+              ? { ...t, balance: String(newPayBalance.toFixed(6)), usd_value: newPayUsd }
               : t
             );
           const injectedReceive = {
@@ -1141,6 +1159,8 @@ function App() {
       // Полный рефреш бэкенда с несколькими попытками (Moralis медленный)
       setTimeout(() => fetchAssets(selectedNetwork.id, true), 5000);
       setTimeout(() => fetchAssets(selectedNetwork.id, true), 15000);
+      // После истечения оверрайдов (120с) — финальный рефреш с актуальными данными Moralis
+      setTimeout(() => fetchAssets(selectedNetwork.id, true), 125_000);
 
     } catch (error) {
       console.error("Swap Error:", error);
@@ -1979,10 +1999,16 @@ function App() {
                         </div>
                         <div className="text-right">
                           <div className="font-bold text-[var(--text-primary)]">
-                            {token.isCustom ? 'Из поиска' : (token.usd_value > 0 ? `$${token.usd_value.toFixed(2)}` : '< $0.01')}
+                            {token.isCustom
+                              ? 'Из поиска'
+                              : Number(token.usd_value) >= 0.01
+                                ? `$${Number(token.usd_value).toFixed(2)}`
+                                : Number(token.usd_value) > 0
+                                  ? '< $0.01'
+                                  : '—'}
                           </div>
                           <div className="text-sm font-medium text-[var(--text-muted)]">
-                            {token.isCustom ? 'Выбрать' : token.balance}
+                            {token.isCustom ? 'Выбрать' : formatBalanceDisplay(Number(token.balance || 0))}
                           </div>
                         </div>
                       </button>
